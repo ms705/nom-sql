@@ -16,6 +16,9 @@ pub use self::parser::*;
 pub use self::select::{SelectStatement, GroupByClause, JoinClause, LimitClause, OrderClause,
                        OrderType};
 pub use self::table::Table;
+pub use self::execute::ExecuteStatement;
+pub use self::execute::execute_statement;
+pub use nom::IResult;
 
 pub mod parser;
 
@@ -30,3 +33,4 @@ mod insert;
 mod join;
 mod select;
 mod table;
+mod execute;

@@ -31,6 +31,32 @@ pub enum SqlType {
     Varbinary(u16),
 }
 
+impl fmt::Display for SqlType {
+    
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self{
+            SqlType::Char(len) => write!(f, "CHAR({})",len),
+            SqlType::Varchar(len) => write!(f, "VARCHAR({})", len),
+            SqlType::Int(len) => write!(f, "INT({})", len),
+            SqlType::Bigint(len) => write!(f, "BIGINT({})", len),
+            SqlType::Tinyint(len) => write!(f, "TINYINT({})", len),
+            SqlType::Blob => write!(f, "BLOB"),
+            SqlType::Longblob => write!(f, "LONGBLOB"),
+            SqlType::Mediumblob => write!(f, "MEDIUMBLOB"),
+            SqlType::Tinyblob => write!(f, "TINYBLOB"),
+            SqlType::Double => write!(f, "DOUBLE"),
+            SqlType::Float => write!(f, "FLOAT"),
+            SqlType::Real => write!(f, "REAL"),
+            SqlType::Tinytext => write!(f, "TINYTEXT"),
+            SqlType::Mediumtext => write!(f, "MEDIUMTEXT"),
+            SqlType::Text => write!(f, "TEXT"),
+            SqlType::Date => write!(f, "DATE"),
+            SqlType::Timestamp => write!(f, "TIMESTAMP"),
+            SqlType::Varbinary(len) => write!(f, "VARBINARY({})", len),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Literal {
     Null,
@@ -65,7 +91,7 @@ impl ToString for Literal {
         match *self {
             Literal::Null => "NULL".to_string(),
             Literal::Integer(ref i) => format!("{}", i),
-            Literal::String(ref s) => s.clone(),
+            Literal::String(ref s) => format!("'{}'", s),
             Literal::Blob(ref bv) => {
                 format!(
                     "{}",
@@ -81,6 +107,7 @@ impl ToString for Literal {
         }
     }
 }
+
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Operator {
@@ -101,18 +128,18 @@ pub enum Operator {
 impl Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op = match *self {
-            Operator::Not => "not",
-            Operator::And => "and",
-            Operator::Or => "or",
-            Operator::Like => "like",
-            Operator::NotLike => "not_like",
+            Operator::Not => "NOT",
+            Operator::And => "AND",
+            Operator::Or => "OR",
+            Operator::Like => "LIKE",
+            Operator::NotLike => "NOT_LIKE",
             Operator::Equal => "=",
             Operator::NotEqual => "!=",
             Operator::Greater => ">",
             Operator::GreaterOrEqual => ">=",
             Operator::Less => "<",
             Operator::LessOrEqual => "<=",
-            Operator::In => "in",
+            Operator::In => "IN",
         };
         write!(f, "{}", op)
     }
@@ -124,6 +151,56 @@ pub enum TableKey {
     UniqueKey(Option<String>, Vec<Column>),
     FulltextKey(Option<String>, Vec<Column>),
     Key(String, Vec<Column>),
+}
+
+impl fmt::Display for TableKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self{
+            TableKey::PrimaryKey(ref columns) => {
+                write!(f, "PRIMARY KEY (")?;
+                for (i, column) in columns.iter().enumerate(){
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", column)?;
+                }
+                write!(f, ")")
+            }
+            TableKey::UniqueKey(ref name, ref columns) => {
+                write!(f, "UNIQUE KEY")?;
+                if let Some(ref name) = *name {
+                    write!(f, "{}", name)?;
+                }
+                write!(f, "(")?;
+                for (i, column) in columns.iter().enumerate(){
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", column)?;
+                }
+                write!(f, ")")
+            }
+            TableKey::FulltextKey(ref name, ref columns) => {
+                write!(f, "FULLTEXT KEY")?;
+                if let Some(ref name) = *name {
+                    write!(f, "{}", name)?;
+                }
+                write!(f, "(")?;
+                for (i, column) in columns.iter().enumerate(){
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", column)?;
+                }
+                write!(f, ")")
+            }
+            TableKey::Key(ref name, ref columns) => {
+                write!(f, "KEY")?;
+                write!(f, "{}", name)?;
+                write!(f, "(")?;
+                for (i, column) in columns.iter().enumerate(){
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", column)?;
+                }
+                write!(f, ")")
+            }
+        }
+
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]

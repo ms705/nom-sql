@@ -4,23 +4,24 @@ use std::str;
 use create::*;
 use insert::*;
 use select::*;
+use delete::*;
 use std::fmt;
-use SqlQuery::{Select,Insert,CreateTable};
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub enum SqlQuery {
     CreateTable(CreateTableStatement),
     Insert(InsertStatement),
     Select(SelectStatement),
+    Delete(DeleteStatement),
 }
 
 impl fmt::Display for SqlQuery{
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self{
-            Select(ref select) => write!(f, "{}", select),
-            Insert(ref insert) => write!(f, "{}", insert),
-            CreateTable(ref create) => write!(f, "{}", create)
+            SqlQuery::Select(ref select) => write!(f, "{}", select),
+            SqlQuery::Insert(ref insert) => write!(f, "{}", insert),
+            SqlQuery::CreateTable(ref create) => write!(f, "{}", create),
+            SqlQuery::Delete(ref delete) => write!(f, "{}", delete),
         }
     }
 }
@@ -48,6 +49,10 @@ pub fn parse_query(input: &str) -> Result<SqlQuery, &str> {
 
     match selection(&q_bytes) {
         IResult::Done(_, o) => return Ok(SqlQuery::Select(o)),
+        _ => (),
+    };
+    match deletion(&q_bytes) {
+        IResult::Done(_, o) => return Ok(SqlQuery::Delete(o)),
         _ => (),
     };
 

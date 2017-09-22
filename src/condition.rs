@@ -2,6 +2,7 @@ use nom::multispace;
 use nom::{IResult, Err, ErrorKind, Needed};
 use std::collections::{HashSet, VecDeque};
 use std::str;
+use std::fmt;
 
 use column::Column;
 use common::{binary_comparison_operator, column_identifier, integer_literal, string_literal,
@@ -17,11 +18,40 @@ pub enum ConditionBase {
     NestedSelect(Box<SelectStatement>),
 }
 
+impl fmt::Display for ConditionBase{
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self{
+            ConditionBase::Field(ref col) => {
+                write!(f, "{}", col)
+            }
+            ConditionBase::Literal(ref literal) => {
+                write!(f, "{}", literal.to_string())
+            }
+            ConditionBase::Placeholder => {
+                write!(f, "?")
+            }
+            ConditionBase::NestedSelect(ref select) => {
+                write!(f, "{}", select)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub struct ConditionTree {
     pub operator: Operator,
     pub left: Box<ConditionExpression>,
     pub right: Box<ConditionExpression>,
+}
+
+impl fmt::Display for ConditionTree{
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.left)?;
+        write!(f, " {} ", self.operator)?;
+        write!(f, "{}", self.right)
+    }
 }
 
 impl<'a> ConditionTree {
@@ -57,6 +87,26 @@ pub enum ConditionExpression {
     LogicalOp(ConditionTree),
     NegationOp(Box<ConditionExpression>),
     Base(ConditionBase),
+}
+
+impl fmt::Display for ConditionExpression{
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self{
+            ConditionExpression::ComparisonOp(ref tree) => {
+                write!(f, "{}", tree)
+            }
+            ConditionExpression::LogicalOp(ref tree) => {
+                write!(f, "{}", tree)
+            }
+            ConditionExpression::NegationOp(ref expr) => {
+                write!(f, "NOT {}", expr)
+            }
+            ConditionExpression::Base(ref base) => {
+               write!(f, "{}", base) 
+            }
+        }
+    }
 }
 
 /// Parse a conditional expression into a condition tree structure

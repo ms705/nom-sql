@@ -5,11 +5,34 @@ use std::str;
 use common::{field_list, statement_terminator, table_reference, value_list, Literal};
 use column::Column;
 use table::Table;
+use std::fmt;
 
 #[derive(Clone, Debug, Default, Hash, PartialEq, Serialize, Deserialize)]
 pub struct InsertStatement {
     pub table: Table,
     pub fields: Vec<(Column, Literal)>,
+}
+
+impl fmt::Display for InsertStatement{
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "INSERT INTO {}", self.table)?;
+        if self.fields.len() > 0 {
+            write!(f, " (")?;
+            for (i, &(ref col,_)) in self.fields.iter().enumerate(){
+                if i > 0 { write!(f, ", ")?;}
+                write!(f, "{}", col)?; 
+            }
+            write!(f, ")")?;
+            write!(f, " VALUES (")?;
+            for (i, &(_, ref literal)) in self.fields.iter().enumerate(){
+                if i > 0 { write!(f, ", ")?;}
+                write!(f, "{}", literal.to_string())?; 
+            }
+            write!(f, ")")?;
+        }
+        Ok(())
+    }
 }
 
 /// Parse rule for a SQL insert query.
@@ -84,6 +107,13 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+    #[test]
+    fn simple_insert_reformat() {
+        let qstring = "INSERT INTO users VALUES (42, \"test\");";
+        let expected = "INSERT INTO users (0, 1) VALUES (42, 'test')";
+        let res = insertion(qstring.as_bytes());
+        assert_eq!(format!("{}", res.unwrap().1), expected);
     }
 
     #[test]

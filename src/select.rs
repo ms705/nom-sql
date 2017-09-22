@@ -9,6 +9,7 @@ use common::{as_alias, field_definition_expr, field_list, unsigned_number, state
 use condition::{condition_expr, ConditionExpression};
 use join::{join_operator, JoinConstraint, JoinOperator, JoinRightSide};
 use table::Table;
+use std::fmt;
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub struct GroupByClause {
@@ -50,6 +51,32 @@ pub struct SelectStatement {
     pub group_by: Option<GroupByClause>,
     pub order: Option<OrderClause>,
     pub limit: Option<LimitClause>,
+}
+
+impl fmt::Display for SelectStatement{
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SELECT ")?;
+        if self.distinct{
+            write!(f, "DISTINCT ")?;
+        }
+
+        for (i,field) in self.fields.iter().enumerate(){
+            if i > 0 {write!(f, ", ")?;}
+            write!(f, "{}", field)?;
+        }
+        write!(f, " FROM ")?;
+        assert!(self.tables.len() > 0);
+        for (i,table) in self.tables.iter().enumerate(){
+            if i > 0 {write!(f, ",")?;}
+            write!(f, "{}", table)?;
+        }
+        if let Some(ref where_clause) = self.where_clause {
+            write!(f, " WHERE ")?;
+            write!(f, "{}", where_clause)?;
+        }
+        Ok(())
+    }
 }
 
 /// Parse GROUP BY clause

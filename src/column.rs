@@ -49,6 +49,21 @@ pub struct Column {
     pub function: Option<Box<FunctionExpression>>,
 }
 
+impl fmt::Display for Column{
+    
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref table) = self.table{
+            write!(f, "{}.{}", table, self.name)?;
+        }else{
+            write!(f, "{}", self.name)?;
+        }
+        if let Some(ref alias) = self.alias {
+            write!(f, "{}", alias)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a str> for Column {
     fn from(c: &str) -> Column {
         match c.find(".") {
@@ -107,6 +122,19 @@ pub enum ColumnConstraint {
     AutoIncrement,
 }
 
+impl fmt::Display for ColumnConstraint{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self{
+            ColumnConstraint::NotNull => 
+                write!(f, "NOT NULL"),
+            ColumnConstraint::DefaultValue(ref literal) => 
+                write!(f, "DEFAULT {}", literal.to_string()),
+            ColumnConstraint::AutoIncrement =>
+                write!(f, "AUTOINCREMENT"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct ColumnSpecification {
     pub column: Column,
@@ -133,6 +161,18 @@ impl ColumnSpecification {
             sql_type: t,
             constraints: ccs,
         }
+    }
+}
+
+impl fmt::Display for ColumnSpecification {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} ", self.column)?;
+        write!(f, "{}", self.sql_type)?;
+        for constraint in self.constraints.iter(){
+            write!(f, " {}", constraint)?;
+        }
+        Ok(())
     }
 }
 

@@ -174,28 +174,28 @@ mod tests {
 
     #[test]
     fn display_insert_query() {
-        let qstring0 = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
-        let res0 = parse_query(qstring0);
-        assert!(res0.is_ok());
-        assert_eq!(qstring0, format!("{}",res0.unwrap()));
+        let qstring = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
+        let res = parse_query(qstring);
+        assert!(res.is_ok());
+        assert_eq!(qstring, format!("{}",res.unwrap()));
     }
 
     #[test]
     fn display_insert_query_no_columns() {
-        let qstring0 = "INSERT INTO users VALUES ('aaa', 'xxx')";
-        let expected0 = "INSERT INTO users (0, 1) VALUES ('aaa', 'xxx')";
-        let res0 = parse_query(qstring0);
-        assert!(res0.is_ok());
-        assert_eq!(expected0, format!("{}",res0.unwrap()));
+        let qstring = "INSERT INTO users VALUES ('aaa', 'xxx')";
+        let expected = "INSERT INTO users (0, 1) VALUES ('aaa', 'xxx')";
+        let res = parse_query(qstring);
+        assert!(res.is_ok());
+        assert_eq!(expected, format!("{}",res.unwrap()));
     }
 
     #[test]
     fn format_insert_query() {
-        let qstring0 = "insert into users (name, password) values ('aaa', 'xxx')";
-        let expected0 = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
-        let res0 = parse_query(qstring0);
-        assert!(res0.is_ok());
-        assert_eq!(expected0, format!("{}",res0.unwrap()));
+        let qstring = "insert into users (name, password) values ('aaa', 'xxx')";
+        let expected = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
+        let res = parse_query(qstring);
+        assert!(res.is_ok());
+        assert_eq!(expected, format!("{}",res.unwrap()));
     }
 
     #[test]

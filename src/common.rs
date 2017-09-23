@@ -487,6 +487,34 @@ named!(pub field_list<&[u8], Vec<Column> >,
        )
 );
 
+named!(field_value<&[u8], (Column,Literal) >,
+    chain!(
+        column: column_identifier_no_alias ~
+        multispace? ~
+        tag!("=") ~
+        multispace? ~
+        value: literal,
+        || { (column, value) }
+    )
+);
+
+named!(pub field_value_list<&[u8], Vec<(Column,Literal)> >,
+       many0!(
+           chain!(
+               field_value: field_value ~
+               opt!(
+                   complete!(chain!(
+                       multispace? ~
+                       tag!(",") ~
+                       multispace?,
+                       ||{}
+                   ))
+               ),
+               || { field_value }
+           )
+       )
+);
+
 /// Parse list of column/field definitions.
 named!(pub field_definition_expr<&[u8], Vec<FieldExpression>>,
        many0!(

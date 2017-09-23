@@ -67,7 +67,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_delete_with_where_clause(){
+    fn delete_with_where_clause(){
         let qstring = "DELETE FROM users WHERE id = 1;";
         let res = deletion(qstring.as_bytes());
         let expected_left = Base(Field(Column::from("id")));

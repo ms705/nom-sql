@@ -5,6 +5,7 @@ use create::*;
 use insert::*;
 use select::*;
 use delete::*;
+use update::*;
 use std::fmt;
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
@@ -13,6 +14,7 @@ pub enum SqlQuery {
     Insert(InsertStatement),
     Select(SelectStatement),
     Delete(DeleteStatement),
+    Update(UpdateStatement),
 }
 
 impl fmt::Display for SqlQuery{
@@ -22,6 +24,7 @@ impl fmt::Display for SqlQuery{
             SqlQuery::Insert(ref insert) => write!(f, "{}", insert),
             SqlQuery::CreateTable(ref create) => write!(f, "{}", create),
             SqlQuery::Delete(ref delete) => write!(f, "{}", delete),
+            SqlQuery::Update(ref update) => write!(f,"{}", update)
         }
     }
 }
@@ -53,6 +56,10 @@ pub fn parse_query(input: &str) -> Result<SqlQuery, &str> {
     };
     match deletion(&q_bytes) {
         IResult::Done(_, o) => return Ok(SqlQuery::Delete(o)),
+        _ => (),
+    };
+    match updating(&q_bytes) {
+        IResult::Done(_, o) => return Ok(SqlQuery::Update(o)),
         _ => (),
     };
 
@@ -189,6 +196,15 @@ mod tests {
         let res0 = parse_query(qstring0);
         assert!(res0.is_ok());
         assert_eq!(expected0, format!("{}",res0.unwrap()));
+    }
+
+    #[test]
+    fn format_update_query() {
+        let qstring = "update users set name=42, password='xxx' where id=1";
+        let expected = "UPDATE users SET name = 42, password = 'xxx' WHERE id = 1";
+        let res = parse_query(qstring);
+        assert!(res.is_ok());
+        assert_eq!(expected, format!("{}",res.unwrap()));
     }
 
 

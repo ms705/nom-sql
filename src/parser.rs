@@ -17,14 +17,14 @@ pub enum SqlQuery {
     Update(UpdateStatement),
 }
 
-impl fmt::Display for SqlQuery{
+impl fmt::Display for SqlQuery {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
+        match *self {
             SqlQuery::Select(ref select) => write!(f, "{}", select),
             SqlQuery::Insert(ref insert) => write!(f, "{}", insert),
             SqlQuery::CreateTable(ref create) => write!(f, "{}", create),
             SqlQuery::Delete(ref delete) => write!(f, "{}", delete),
-            SqlQuery::Update(ref update) => write!(f,"{}", update)
+            SqlQuery::Update(ref update) => write!(f, "{}", update),
         }
     }
 }
@@ -116,11 +116,11 @@ mod tests {
         assert!(res3.is_ok());
         assert!(res4.is_ok());
 
-        assert_eq!(qstring0, format!("{}",res0.unwrap()));
-        assert_eq!(qstring1, format!("{}",res1.unwrap()));
-        assert_eq!(qstring2, format!("{}",res2.unwrap()));
-        assert_eq!(qstring3, format!("{}",res3.unwrap()));
-        assert_eq!(qstring4, format!("{}",res4.unwrap()));
+        assert_eq!(qstring0, format!("{}", res0.unwrap()));
+        assert_eq!(qstring1, format!("{}", res1.unwrap()));
+        assert_eq!(qstring2, format!("{}", res2.unwrap()));
+        assert_eq!(qstring3, format!("{}", res3.unwrap()));
+        assert_eq!(qstring4, format!("{}", res4.unwrap()));
     }
 
     #[test]
@@ -141,9 +141,9 @@ mod tests {
         assert!(res2.is_ok());
         assert!(res3.is_ok());
 
-        assert_eq!(expected1, format!("{}",res1.unwrap()));
-        assert_eq!(expected2, format!("{}",res2.unwrap()));
-        assert_eq!(expected3, format!("{}",res3.unwrap()));
+        assert_eq!(expected1, format!("{}", res1.unwrap()));
+        assert_eq!(expected2, format!("{}", res2.unwrap()));
+        assert_eq!(expected3, format!("{}", res3.unwrap()));
     }
 
     #[test]
@@ -177,7 +177,7 @@ mod tests {
         let qstring = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
         let res = parse_query(qstring);
         assert!(res.is_ok());
-        assert_eq!(qstring, format!("{}",res.unwrap()));
+        assert_eq!(qstring, format!("{}", res.unwrap()));
     }
 
     #[test]
@@ -186,7 +186,7 @@ mod tests {
         let expected = "INSERT INTO users (0, 1) VALUES ('aaa', 'xxx')";
         let res = parse_query(qstring);
         assert!(res.is_ok());
-        assert_eq!(expected, format!("{}",res.unwrap()));
+        assert_eq!(expected, format!("{}", res.unwrap()));
     }
 
     #[test]
@@ -195,7 +195,7 @@ mod tests {
         let expected = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
         let res = parse_query(qstring);
         assert!(res.is_ok());
-        assert_eq!(expected, format!("{}",res.unwrap()));
+        assert_eq!(expected, format!("{}", res.unwrap()));
     }
 
     #[test]
@@ -204,7 +204,7 @@ mod tests {
         let expected = "UPDATE users SET name = 42, password = 'xxx' WHERE id = 1";
         let res = parse_query(qstring);
         assert!(res.is_ok());
-        assert_eq!(expected, format!("{}",res.unwrap()));
+        assert_eq!(expected, format!("{}", res.unwrap()));
     }
 
 

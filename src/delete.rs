@@ -1,5 +1,5 @@
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::str;
 
 use common::table_reference;
@@ -15,8 +15,7 @@ pub struct DeleteStatement {
 }
 
 
-impl fmt::Display for DeleteStatement{
-
+impl fmt::Display for DeleteStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "DELETE FROM ")?;
         write!(f, "{}", self.table)?;
@@ -46,20 +45,20 @@ named!(pub deletion<&[u8], DeleteStatement>,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use column::{Column};
-    use common::{Operator,Literal};
+    use column::Column;
+    use common::{Literal, Operator};
     use condition::ConditionBase::*;
     use condition::ConditionExpression::*;
     use condition::ConditionTree;
     use table::Table;
 
     #[test]
-    fn simple_delete(){
+    fn simple_delete() {
         let qstring = "DELETE FROM users;";
         let res = deletion(qstring.as_bytes());
         assert_eq!(
             res.unwrap().1,
-            DeleteStatement{
+            DeleteStatement {
                 table: Table::from("users"),
                 ..Default::default()
             }
@@ -67,7 +66,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_with_where_clause(){
+    fn delete_with_where_clause() {
         let qstring = "DELETE FROM users WHERE id = 1;";
         let res = deletion(qstring.as_bytes());
         let expected_left = Base(Field(Column::from("id")));
@@ -78,7 +77,7 @@ mod tests {
         }));
         assert_eq!(
             res.unwrap().1,
-            DeleteStatement{
+            DeleteStatement {
                 table: Table::from("users"),
                 where_clause: expected_where_cond,
                 ..Default::default()

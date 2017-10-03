@@ -1,5 +1,5 @@
 use nom::{alphanumeric, digit, eof, is_alphanumeric, line_ending, multispace};
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::fmt::{self, Display};
 use std::str;
 use std::str::FromStr;
@@ -32,10 +32,9 @@ pub enum SqlType {
 }
 
 impl fmt::Display for SqlType {
-    
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
-            SqlType::Char(len) => write!(f, "CHAR({})",len),
+        match *self {
+            SqlType::Char(len) => write!(f, "CHAR({})", len),
             SqlType::Varchar(len) => write!(f, "VARCHAR({})", len),
             SqlType::Int(len) => write!(f, "INT({})", len),
             SqlType::Bigint(len) => write!(f, "BIGINT({})", len),
@@ -92,15 +91,13 @@ impl ToString for Literal {
             Literal::Null => "NULL".to_string(),
             Literal::Integer(ref i) => format!("{}", i),
             Literal::String(ref s) => format!("'{}'", s),
-            Literal::Blob(ref bv) => {
-                format!(
-                    "{}",
-                    bv.iter()
-                        .map(|v| format!("{:x}", v))
-                        .collect::<Vec<String>>()
-                        .join(" ")
-                )
-            }
+            Literal::Blob(ref bv) => format!(
+                "{}",
+                bv.iter()
+                    .map(|v| format!("{:x}", v))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
             Literal::CurrentTime => "CURRENT_TIME".to_string(),
             Literal::CurrentDate => "CURRENT_DATE".to_string(),
             Literal::CurrentTimestamp => "CURRENT_TIMESTAMP".to_string(),
@@ -155,11 +152,13 @@ pub enum TableKey {
 
 impl fmt::Display for TableKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
+        match *self {
             TableKey::PrimaryKey(ref columns) => {
                 write!(f, "PRIMARY KEY (")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
+                for (i, column) in columns.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", column)?;
                 }
                 write!(f, ")")
@@ -170,8 +169,10 @@ impl fmt::Display for TableKey {
                     write!(f, "{}", name)?;
                 }
                 write!(f, "(")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
+                for (i, column) in columns.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", column)?;
                 }
                 write!(f, ")")
@@ -182,8 +183,10 @@ impl fmt::Display for TableKey {
                     write!(f, "{}", name)?;
                 }
                 write!(f, "(")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
+                for (i, column) in columns.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", column)?;
                 }
                 write!(f, ")")
@@ -192,14 +195,15 @@ impl fmt::Display for TableKey {
                 write!(f, "KEY")?;
                 write!(f, "{}", name)?;
                 write!(f, "(")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
+                for (i, column) in columns.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", column)?;
                 }
                 write!(f, ")")
             }
         }
-
     }
 }
 

@@ -1,9 +1,9 @@
 
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::str;
 
-use common::{table_reference, Literal, field_value_list};
+use common::{field_value_list, table_reference, Literal};
 use condition::ConditionExpression;
 use table::Table;
 use column::Column;
@@ -21,18 +21,19 @@ pub struct UpdateStatement {
 impl fmt::Display for UpdateStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "UPDATE {} ", self.table)?;
-        assert!(self.fields.len() > 0 );
+        assert!(self.fields.len() > 0);
         write!(f, "SET ")?;
-        for (i, &(ref col, ref literal)) in self.fields.iter().enumerate(){
-            if i > 0 { write!(f, ", ")?;}
-            write!(f, "{} = {}", col, literal.to_string())?; 
+        for (i, &(ref col, ref literal)) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{} = {}", col, literal.to_string())?;
         }
         if let Some(ref where_clause) = self.where_clause {
             write!(f, " WHERE ")?;
             write!(f, "{}", where_clause)?;
         }
         Ok(())
-        
     }
 }
 
@@ -61,7 +62,7 @@ mod tests {
     use super::*;
     use column::Column;
     use table::Table;
-    use common::{Operator,Literal};
+    use common::{Literal, Operator};
     use condition::ConditionBase::*;
     use condition::ConditionExpression::*;
     use condition::ConditionTree;

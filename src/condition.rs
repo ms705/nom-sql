@@ -1,5 +1,5 @@
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::collections::{HashSet, VecDeque};
 use std::str;
 use std::fmt;
@@ -8,7 +8,7 @@ use column::Column;
 use common::{binary_comparison_operator, column_identifier, integer_literal, string_literal,
              Literal, Operator};
 
-use select::{SelectStatement, nested_selection};
+use select::{nested_selection, SelectStatement};
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ConditionBase {
@@ -18,22 +18,13 @@ pub enum ConditionBase {
     NestedSelect(Box<SelectStatement>),
 }
 
-impl fmt::Display for ConditionBase{
-
+impl fmt::Display for ConditionBase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
-            ConditionBase::Field(ref col) => {
-                write!(f, "{}", col)
-            }
-            ConditionBase::Literal(ref literal) => {
-                write!(f, "{}", literal.to_string())
-            }
-            ConditionBase::Placeholder => {
-                write!(f, "?")
-            }
-            ConditionBase::NestedSelect(ref select) => {
-                write!(f, "{}", select)
-            }
+        match *self {
+            ConditionBase::Field(ref col) => write!(f, "{}", col),
+            ConditionBase::Literal(ref literal) => write!(f, "{}", literal.to_string()),
+            ConditionBase::Placeholder => write!(f, "?"),
+            ConditionBase::NestedSelect(ref select) => write!(f, "{}", select),
         }
     }
 }
@@ -45,8 +36,7 @@ pub struct ConditionTree {
     pub right: Box<ConditionExpression>,
 }
 
-impl fmt::Display for ConditionTree{
-
+impl fmt::Display for ConditionTree {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.left)?;
         write!(f, " {} ", self.operator)?;
@@ -89,22 +79,13 @@ pub enum ConditionExpression {
     Base(ConditionBase),
 }
 
-impl fmt::Display for ConditionExpression{
-
+impl fmt::Display for ConditionExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
-            ConditionExpression::ComparisonOp(ref tree) => {
-                write!(f, "{}", tree)
-            }
-            ConditionExpression::LogicalOp(ref tree) => {
-                write!(f, "{}", tree)
-            }
-            ConditionExpression::NegationOp(ref expr) => {
-                write!(f, "NOT {}", expr)
-            }
-            ConditionExpression::Base(ref base) => {
-               write!(f, "{}", base) 
-            }
+        match *self {
+            ConditionExpression::ComparisonOp(ref tree) => write!(f, "{}", tree),
+            ConditionExpression::LogicalOp(ref tree) => write!(f, "{}", tree),
+            ConditionExpression::NegationOp(ref expr) => write!(f, "NOT {}", expr),
+            ConditionExpression::Base(ref base) => write!(f, "{}", base),
         }
     }
 }
@@ -237,7 +218,7 @@ named!(predicate<&[u8], ConditionExpression>,
 mod tests {
     use super::*;
     use column::Column;
-    use common::{Literal, Operator, FieldExpression};
+    use common::{FieldExpression, Literal, Operator};
 
     fn columns(cols: &[&str]) -> Vec<FieldExpression> {
         cols.iter()
@@ -497,7 +478,6 @@ mod tests {
         );
 
         assert_eq!(res.unwrap().1, expected);
-
     }
 
     #[test]
@@ -520,23 +500,18 @@ mod tests {
         let left = flat_condition_tree(
             Operator::In,
             Field("paperId".into()),
-            NestedSelect(nested_select)
+            NestedSelect(nested_select),
         );
 
-        let right = flat_condition_tree(
-            Operator::Greater,
-            Field("size".into()),
-            Literal(0.into()),
-        );
+        let right = flat_condition_tree(Operator::Greater, Field("size".into()), Literal(0.into()));
 
         let expected = ConditionExpression::LogicalOp(ConditionTree {
             left: Box::new(left),
             right: Box::new(right),
-            operator: Operator::And
+            operator: Operator::And,
         });
 
         assert_eq!(res.unwrap().1, expected);
-
     }
 
 }

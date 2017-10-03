@@ -49,12 +49,11 @@ pub struct Column {
     pub function: Option<Box<FunctionExpression>>,
 }
 
-impl fmt::Display for Column{
-    
+impl fmt::Display for Column {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(ref table) = self.table{
+        if let Some(ref table) = self.table {
             write!(f, "{}.{}", table, self.name)?;
-        }else{
+        } else {
             write!(f, "{}", self.name)?;
         }
         if let Some(ref alias) = self.alias {
@@ -67,22 +66,18 @@ impl fmt::Display for Column{
 impl<'a> From<&'a str> for Column {
     fn from(c: &str) -> Column {
         match c.find(".") {
-            None => {
-                Column {
-                    name: String::from(c),
-                    alias: None,
-                    table: None,
-                    function: None,
-                }
-            }
-            Some(i) => {
-                Column {
-                    name: String::from(&c[i + 1..]),
-                    alias: None,
-                    table: Some(String::from(&c[0..i])),
-                    function: None,
-                }
-            }
+            None => Column {
+                name: String::from(c),
+                alias: None,
+                table: None,
+                function: None,
+            },
+            Some(i) => Column {
+                name: String::from(&c[i + 1..]),
+                alias: None,
+                table: Some(String::from(&c[0..i])),
+                function: None,
+            },
         }
     }
 }
@@ -122,15 +117,14 @@ pub enum ColumnConstraint {
     AutoIncrement,
 }
 
-impl fmt::Display for ColumnConstraint{
+impl fmt::Display for ColumnConstraint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
-            ColumnConstraint::NotNull => 
-                write!(f, "NOT NULL"),
-            ColumnConstraint::DefaultValue(ref literal) => 
-                write!(f, "DEFAULT {}", literal.to_string()),
-            ColumnConstraint::AutoIncrement =>
-                write!(f, "AUTOINCREMENT"),
+        match *self {
+            ColumnConstraint::NotNull => write!(f, "NOT NULL"),
+            ColumnConstraint::DefaultValue(ref literal) => {
+                write!(f, "DEFAULT {}", literal.to_string())
+            }
+            ColumnConstraint::AutoIncrement => write!(f, "AUTOINCREMENT"),
         }
     }
 }
@@ -165,11 +159,10 @@ impl ColumnSpecification {
 }
 
 impl fmt::Display for ColumnSpecification {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} ", self.column)?;
         write!(f, "{}", self.sql_type)?;
-        for constraint in self.constraints.iter(){
+        for constraint in self.constraints.iter() {
             write!(f, " {}", constraint)?;
         }
         Ok(())

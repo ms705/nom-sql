@@ -16,8 +16,7 @@ impl<'a> From<&'a str> for Table {
     }
 }
 
-impl fmt::Display for Table{
-
+impl fmt::Display for Table {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(ref alias) = self.alias {
@@ -28,13 +27,16 @@ impl fmt::Display for Table{
 }
 
 #[cfg(test)]
-mod tests{
+mod tests {
 
     use super::*;
 
     #[test]
     fn test_display() {
-        let table = Table{ name: "users".to_string(), alias: Some("u".into())};
+        let table = Table {
+            name: "users".to_string(),
+            alias: Some("u".into()),
+        };
         let expected = "users AS u";
         let res = format!("{}", table);
         assert_eq!(expected, res);

@@ -1,5 +1,5 @@
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::str;
 
 use common::{field_list, statement_terminator, table_reference, value_list, Literal};
@@ -13,21 +13,24 @@ pub struct InsertStatement {
     pub fields: Vec<(Column, Literal)>,
 }
 
-impl fmt::Display for InsertStatement{
-
+impl fmt::Display for InsertStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "INSERT INTO {}", self.table)?;
         if self.fields.len() > 0 {
             write!(f, " (")?;
-            for (i, &(ref col,_)) in self.fields.iter().enumerate(){
-                if i > 0 { write!(f, ", ")?;}
-                write!(f, "{}", col)?; 
+            for (i, &(ref col, _)) in self.fields.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", col)?;
             }
             write!(f, ")")?;
             write!(f, " VALUES (")?;
-            for (i, &(_, ref literal)) in self.fields.iter().enumerate(){
-                if i > 0 { write!(f, ", ")?;}
-                write!(f, "{}", literal.to_string())?; 
+            for (i, &(_, ref literal)) in self.fields.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", literal.to_string())?;
             }
             write!(f, ")")?;
         }

@@ -1,5 +1,5 @@
 use nom::{alphanumeric, digit, multispace};
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::str;
 use std::str::FromStr;
 
@@ -16,19 +16,22 @@ pub struct CreateTableStatement {
     pub keys: Option<Vec<TableKey>>,
 }
 
-impl fmt::Display for CreateTableStatement{
-
+impl fmt::Display for CreateTableStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CREATE TABLE {} ", self.table)?;
         write!(f, "(")?;
-        for (i, field) in self.fields.iter().enumerate(){
-            if i > 0 { write!(f, ", ")?; }
+        for (i, field) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
             write!(f, "{}", field)?;
         }
         if let Some(ref keys) = self.keys {
             write!(f, ", ")?;
-            for (k, key) in keys.iter().enumerate(){
-                if k > 0 { write!(f, ", ")?; }
+            for (k, key) in keys.iter().enumerate() {
+                if k > 0 {
+                    write!(f, ", ")?;
+                }
                 write!(f, "{}", key)?;
             }
         }
@@ -38,12 +41,10 @@ impl fmt::Display for CreateTableStatement{
 
 fn len_as_u16(len: &[u8]) -> u16 {
     match str::from_utf8(len) {
-        Ok(s) => {
-            match u16::from_str(s) {
-                Ok(v) => v,
-                Err(e) => panic!(e),
-            }
-        }
+        Ok(s) => match u16::from_str(s) {
+            Ok(v) => v,
+            Err(e) => panic!(e),
+        },
         Err(e) => panic!(e),
     }
 }
@@ -446,7 +447,7 @@ mod tests {
         let expected = "CREATE TABLE users (id BIGINT(20), name VARCHAR(255), email VARCHAR(255))";
 
         let res = creation(qstring.as_bytes());
-        assert_eq!(format!("{}", res.unwrap().1), expected );
+        assert_eq!(format!("{}", res.unwrap().1), expected);
     }
 
     #[test]
@@ -486,10 +487,10 @@ mod tests {
                        varchar(40) NOT NULL default '') TYPE=MyISAM;";
 
         let expected = "CREATE TABLE user_newtalk (user_id INT(5) NOT NULL DEFAULT '0', user_ip \
-                       VARCHAR(40) NOT NULL DEFAULT '')";
+                        VARCHAR(40) NOT NULL DEFAULT '')";
 
         let res = creation(qstring.as_bytes());
-        assert_eq!(format!("{}", res.unwrap().1), expected );
+        assert_eq!(format!("{}", res.unwrap().1), expected);
     }
 
     #[test]
@@ -528,10 +529,7 @@ mod tests {
                     ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
                 ],
                 keys: Some(vec![
-                    TableKey::UniqueKey(
-                        Some(String::from("id_k")),
-                        vec![Column::from("id")],
-                    ),
+                    TableKey::UniqueKey(Some(String::from("id_k")), vec![Column::from("id")]),
                 ]),
                 ..Default::default()
             }
@@ -543,9 +541,9 @@ mod tests {
         let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255), \
                        PRIMARY KEY (id));";
         let expected = "CREATE TABLE users (id BIGINT(20), name VARCHAR(255), email VARCHAR(255), \
-                       PRIMARY KEY (id))";
+                        PRIMARY KEY (id))";
         let res = creation(qstring.as_bytes());
-        assert_eq!(format!("{}",res.unwrap().1), expected);
+        assert_eq!(format!("{}", res.unwrap().1), expected);
 
         // named unique key
         let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255), \
@@ -562,10 +560,7 @@ mod tests {
                     ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
                 ],
                 keys: Some(vec![
-                    TableKey::UniqueKey(
-                        Some(String::from("id_k")),
-                        vec![Column::from("id")],
-                    ),
+                    TableKey::UniqueKey(Some(String::from("id_k")), vec![Column::from("id")]),
                 ]),
                 ..Default::default()
             }

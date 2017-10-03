@@ -45,10 +45,12 @@ impl fmt::Display for CreateTableStatement {
 
 fn len_as_u16(len: &[u8]) -> u16 {
     match str::from_utf8(len) {
-        Ok(s) => match u16::from_str(s) {
-            Ok(v) => v,
-            Err(e) => panic!(e),
-        },
+        Ok(s) => {
+            match u16::from_str(s) {
+                Ok(v) => v,
+                Err(e) => panic!(e),
+            }
+        }
         Err(e) => panic!(e),
     }
 }
@@ -470,7 +472,7 @@ mod tests {
                         vec![
                             ColumnConstraint::NotNull,
                             ColumnConstraint::DefaultValue(Literal::String(String::from("0"))),
-                        ],
+                        ]
                     ),
                     ColumnSpecification::with_constraints(
                         Column::from("user_ip"),
@@ -478,7 +480,7 @@ mod tests {
                         vec![
                             ColumnConstraint::NotNull,
                             ColumnConstraint::DefaultValue(Literal::String(String::from(""))),
-                        ],
+                        ]
                     ),
                 ],
                 ..Default::default()
@@ -533,7 +535,10 @@ mod tests {
                     ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
                 ],
                 keys: Some(vec![
-                    TableKey::UniqueKey(Some(String::from("id_k")), vec![Column::from("id")]),
+                    TableKey::UniqueKey(
+                        Some(String::from("id_k")),
+                        vec![Column::from("id")]
+                    ),
                 ]),
                 ..Default::default()
             }
@@ -564,7 +569,10 @@ mod tests {
                     ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
                 ],
                 keys: Some(vec![
-                    TableKey::UniqueKey(Some(String::from("id_k")), vec![Column::from("id")]),
+                    TableKey::UniqueKey(
+                        Some(String::from("id_k")),
+                        vec![Column::from("id")]
+                    ),
                 ]),
                 ..Default::default()
             }

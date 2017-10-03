@@ -490,18 +490,16 @@ mod tests {
         let qstring2 = "select * from users order by name asc, age desc\n";
         let qstring3 = "select * from users order by name\n";
 
-        let expected_ord1 = OrderClause {
-            columns: vec![("name".into(), OrderType::OrderDescending)],
-        };
+        let expected_ord1 =
+            OrderClause { columns: vec![("name".into(), OrderType::OrderDescending)] };
         let expected_ord2 = OrderClause {
             columns: vec![
                 ("name".into(), OrderType::OrderAscending),
                 ("age".into(), OrderType::OrderDescending),
             ],
         };
-        let expected_ord3 = OrderClause {
-            columns: vec![("name".into(), OrderType::OrderAscending)],
-        };
+        let expected_ord3 =
+            OrderClause { columns: vec![("name".into(), OrderType::OrderAscending)] };
 
         let res1 = selection(qstring1.as_bytes());
         let res2 = selection(qstring2.as_bytes());
@@ -924,11 +922,13 @@ mod tests {
             res.unwrap().1,
             SelectStatement {
                 tables: vec![Table::from("ContactInfo")],
-                fields: columns(&[
-                    "PCMember.contactId",
-                    "ChairAssistant.contactId",
-                    "Chair.contactId"
-                ]),
+                fields: columns(
+                    &[
+                        "PCMember.contactId",
+                        "ChairAssistant.contactId",
+                        "Chair.contactId",
+                    ],
+                ),
                 join: vec![
                     mkjoin("PaperReview", "contactId"),
                     mkjoin("PaperConflict", "contactId"),

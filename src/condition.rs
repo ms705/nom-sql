@@ -268,7 +268,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Placeholder
+                ConditionBase::Placeholder,
             )
         );
     }
@@ -284,7 +284,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::Integer(42 as i64))
+                ConditionBase::Literal(Literal::Integer(42 as i64)),
             )
         );
 
@@ -294,7 +294,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::String(String::from("hello")))
+                ConditionBase::Literal(Literal::String(String::from("hello"))),
             )
         );
     }
@@ -310,7 +310,7 @@ mod tests {
             flat_condition_tree(
                 Operator::GreaterOrEqual,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::Integer(42 as i64))
+                ConditionBase::Literal(Literal::Integer(42 as i64)),
             )
         );
 
@@ -320,7 +320,7 @@ mod tests {
             flat_condition_tree(
                 Operator::LessOrEqual,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::Integer(5 as i64))
+                ConditionBase::Literal(Literal::Integer(5 as i64)),
             )
         );
     }
@@ -335,7 +335,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::String(String::from("")))
+                ConditionBase::Literal(Literal::String(String::from(""))),
             )
         );
     }

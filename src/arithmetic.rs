@@ -90,28 +90,30 @@ mod tests {
         // use semicolon-terminated queries).
         let col_lit_ae = ["foo+5", "foo + 5", "5 + foo ", "MAX(foo)-3333"];
 
-        let expected_lit_ae = [
-            ArithmeticExpression::new(Add, Scalar(5.into()), Scalar(42.into())),
-            ArithmeticExpression::new(Add, Scalar(5.into()), Scalar(42.into())),
-            ArithmeticExpression::new(Multiply, Scalar(5.into()), Scalar(42.into())),
-            ArithmeticExpression::new(Subtract, Scalar(5.into()), Scalar(42.into())),
-            ArithmeticExpression::new(Divide, Scalar(5.into()), Scalar(42.into())),
-        ];
-        let expected_col_lit_ae = [
-            ArithmeticExpression::new(Add, ABColumn("foo".into()), Scalar(5.into())),
-            ArithmeticExpression::new(Add, ABColumn("foo".into()), Scalar(5.into())),
-            ArithmeticExpression::new(Add, Scalar(5.into()), ABColumn("foo".into())),
-            ArithmeticExpression::new(
-                Subtract,
-                ABColumn(Column {
-                    name: String::from("max(foo)"),
-                    alias: None,
-                    table: None,
-                    function: Some(Box::new(FunctionExpression::Max("foo".into()))),
-                }),
-                Scalar(3333.into()),
-            ),
-        ];
+        let expected_lit_ae =
+            [
+                ArithmeticExpression::new(Add, Scalar(5.into()), Scalar(42.into())),
+                ArithmeticExpression::new(Add, Scalar(5.into()), Scalar(42.into())),
+                ArithmeticExpression::new(Multiply, Scalar(5.into()), Scalar(42.into())),
+                ArithmeticExpression::new(Subtract, Scalar(5.into()), Scalar(42.into())),
+                ArithmeticExpression::new(Divide, Scalar(5.into()), Scalar(42.into())),
+            ];
+        let expected_col_lit_ae =
+            [
+                ArithmeticExpression::new(Add, ABColumn("foo".into()), Scalar(5.into())),
+                ArithmeticExpression::new(Add, ABColumn("foo".into()), Scalar(5.into())),
+                ArithmeticExpression::new(Add, Scalar(5.into()), ABColumn("foo".into())),
+                ArithmeticExpression::new(
+                    Subtract,
+                    ABColumn(Column {
+                        name: String::from("max(foo)"),
+                        alias: None,
+                        table: None,
+                        function: Some(Box::new(FunctionExpression::Max("foo".into()))),
+                    }),
+                    Scalar(3333.into()),
+                ),
+            ];
 
         for (i, e) in lit_ae.iter().enumerate() {
             let res = arithmetic_expression(e.as_bytes());

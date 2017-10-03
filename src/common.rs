@@ -91,13 +91,15 @@ impl ToString for Literal {
             Literal::Null => "NULL".to_string(),
             Literal::Integer(ref i) => format!("{}", i),
             Literal::String(ref s) => format!("'{}'", s),
-            Literal::Blob(ref bv) => format!(
-                "{}",
-                bv.iter()
-                    .map(|v| format!("{:x}", v))
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            ),
+            Literal::Blob(ref bv) => {
+                format!(
+                    "{}",
+                    bv.iter()
+                        .map(|v| format!("{:x}", v))
+                        .collect::<Vec<String>>()
+                        .join(" ")
+                )
+            }
             Literal::CurrentTime => "CURRENT_TIME".to_string(),
             Literal::CurrentDate => "CURRENT_DATE".to_string(),
             Literal::CurrentTimestamp => "CURRENT_TIMESTAMP".to_string(),

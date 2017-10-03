@@ -58,7 +58,7 @@ impl fmt::Display for Column{
             write!(f, "{}", self.name)?;
         }
         if let Some(ref alias) = self.alias {
-            write!(f, "{}", alias)?;
+            write!(f, " AS {}", alias)?;
         }
         Ok(())
     }
@@ -167,9 +167,8 @@ impl ColumnSpecification {
 impl fmt::Display for ColumnSpecification {
 
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} ", self.column)?;
-        write!(f, "{}", self.sql_type)?;
-        for constraint in self.constraints.iter(){
+        write!(f, "{} {}", self.column, self.sql_type)?;
+        for constraint in self.constraints.iter() {
             write!(f, " {}", constraint)?;
         }
         Ok(())
@@ -194,5 +193,17 @@ mod tests {
                 function: None,
             }
         );
+    }
+
+    #[test]
+    fn column_wit_alias(){
+        let c = Column {
+            name: String::from("col"),
+            alias: Some("alias".into()),
+            table: Some(String::from("table")),
+            function: None,
+        };
+        let expected = "table.col AS alias";
+        assert_eq!(expected, format!("{}", c));
     }
 }

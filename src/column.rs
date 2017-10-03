@@ -189,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn column_wit_alias(){
+    fn column_wit_alias() {
         let c = Column {
             name: String::from("col"),
             alias: Some("alias".into()),

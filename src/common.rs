@@ -155,25 +155,57 @@ impl fmt::Display for TableKey {
         match *self {
             TableKey::PrimaryKey(ref columns) => {
                 write!(f, "PRIMARY KEY ")?;
-                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
+                write!(
+                    f,
+                    "({})",
+                    columns
+                        .iter()
+                        .map(|c| c.name.to_owned())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
             TableKey::UniqueKey(ref name, ref columns) => {
                 write!(f, "UNIQUE KEY ")?;
                 if let Some(ref name) = *name {
                     write!(f, "{} ", name)?;
                 }
-                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
+                write!(
+                    f,
+                    "({})",
+                    columns
+                        .iter()
+                        .map(|c| c.name.to_owned())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
             TableKey::FulltextKey(ref name, ref columns) => {
                 write!(f, "FULLTEXT KEY ")?;
                 if let Some(ref name) = *name {
                     write!(f, "{} ", name)?;
                 }
-                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
+                write!(
+                    f,
+                    "({})",
+                    columns
+                        .iter()
+                        .map(|c| c.name.to_owned())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
             TableKey::Key(ref name, ref columns) => {
                 write!(f, "KEY {} ", name)?;
-                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
+                write!(
+                    f,
+                    "({})",
+                    columns
+                        .iter()
+                        .map(|c| c.name.to_owned())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
         }
     }

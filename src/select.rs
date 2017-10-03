@@ -59,11 +59,27 @@ impl fmt::Display for SelectStatement {
         if self.distinct {
             write!(f, "DISTINCT ")?;
         }
-        write!(f, "{}", self.fields.iter().map(|field| format!("{}",field) ).collect::<Vec<_>>().join(", "))?;
+        write!(
+            f,
+            "{}",
+            self.fields
+                .iter()
+                .map(|field| format!("{}", field))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
 
         if self.tables.len() > 0 {
             write!(f, " FROM ")?;
-            write!(f, "{}", self.tables.iter().map(|table| format!("{}", table) ).collect::<Vec<_>>().join(", "))?;
+            write!(
+                f,
+                "{}",
+                self.tables
+                    .iter()
+                    .map(|table| format!("{}", table))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
         }
         if let Some(ref where_clause) = self.where_clause {
             write!(f, " WHERE ")?;
@@ -334,8 +350,7 @@ mod tests {
         let qstring = "SELECT users.id as user_id, users.name as username FROM users;";
         let expected = "SELECT users.id AS user_id, users.name AS username FROM users";
         let res = selection(qstring.as_bytes());
-        assert_eq!(expected, format!("{}",res.unwrap().1));
-
+        assert_eq!(expected, format!("{}", res.unwrap().1));
     }
 
     #[test]

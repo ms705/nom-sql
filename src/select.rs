@@ -59,20 +59,11 @@ impl fmt::Display for SelectStatement {
         if self.distinct {
             write!(f, "DISTINCT ")?;
         }
+        write!(f, "{}", self.fields.iter().map(|field| format!("{}",field) ).collect::<Vec<_>>().join(", "))?;
 
-        for (i, field) in self.fields.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", field)?;
-        }
-        write!(f, " FROM ")?;
-        assert!(self.tables.len() > 0);
-        for (i, table) in self.tables.iter().enumerate() {
-            if i > 0 {
-                write!(f, ",")?;
-            }
-            write!(f, "{}", table)?;
+        if self.tables.len() > 0 {
+            write!(f, " FROM ")?;
+            write!(f, "{}", self.tables.iter().map(|table| format!("{}", table) ).collect::<Vec<_>>().join(", "))?;
         }
         if let Some(ref where_clause) = self.where_clause {
             write!(f, " WHERE ")?;

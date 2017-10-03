@@ -22,13 +22,7 @@ impl fmt::Display for UpdateStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "UPDATE {} ", self.table)?;
         assert!(self.fields.len() > 0);
-        write!(f, "SET ")?;
-        for (i, &(ref col, ref literal)) in self.fields.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{} = {}", col, literal.to_string())?;
-        }
+        write!(f, "SET {}", self.fields.iter().map(|&(ref col, ref literal)| format!("{} = {}", col, literal.to_string()) ).collect::<Vec<_>>().join(", "))?;
         if let Some(ref where_clause) = self.where_clause {
             write!(f, " WHERE ")?;
             write!(f, "{}", where_clause)?;

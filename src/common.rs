@@ -194,7 +194,7 @@ impl Display for FieldExpression {
             FieldExpression::All => write!(f, "*"),
             FieldExpression::AllInTable(ref table) => write!(f, "{}.*", table),
             FieldExpression::Arithmetic(ref expr) => write!(f, "{:?}", expr),
-            FieldExpression::Col(ref col) => write!(f, "{}", col.name.as_str()),
+            FieldExpression::Col(ref col) => write!(f, "{}", col),
             FieldExpression::Literal(ref lit) => write!(f, "{}", lit.to_string()),
         }
     }

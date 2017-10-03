@@ -17,21 +17,8 @@ impl fmt::Display for InsertStatement{
 
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "INSERT INTO {}", self.table)?;
-        if self.fields.len() > 0 {
-            write!(f, " (")?;
-            for (i, &(ref col,_)) in self.fields.iter().enumerate(){
-                if i > 0 { write!(f, ", ")?;}
-                write!(f, "{}", col)?; 
-            }
-            write!(f, ")")?;
-            write!(f, " VALUES (")?;
-            for (i, &(_, ref literal)) in self.fields.iter().enumerate(){
-                if i > 0 { write!(f, ", ")?;}
-                write!(f, "{}", literal.to_string())?; 
-            }
-            write!(f, ")")?;
-        }
-        Ok(())
+        write!(f, " ({})", self.fields.iter().map(|&(ref col, _) | col.name.to_owned() ).collect::<Vec<_>>().join(", "))?;
+        write!(f, " VALUES ({})", self.fields.iter().map(|&(_, ref literal) | literal.to_string() ).collect::<Vec<_>>().join(", "))
     }
 }
 

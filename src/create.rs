@@ -21,16 +21,9 @@ impl fmt::Display for CreateTableStatement{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CREATE TABLE {} ", self.table)?;
         write!(f, "(")?;
-        for (i, field) in self.fields.iter().enumerate(){
-            if i > 0 { write!(f, ", ")?; }
-            write!(f, "{}", field)?;
-        }
+        write!(f, "{}", self.fields.iter().map(|field| format!("{}",field) ).collect::<Vec<_>>().join(", "))?;
         if let Some(ref keys) = self.keys {
-            write!(f, ", ")?;
-            for (k, key) in keys.iter().enumerate(){
-                if k > 0 { write!(f, ", ")?; }
-                write!(f, "{}", key)?;
-            }
+            write!(f, ", {}", keys.iter().map(|key| format!("{}", key) ).collect::<Vec<_>>().join(", "))?;
         }
         write!(f, ")")
     }

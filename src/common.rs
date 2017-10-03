@@ -157,46 +157,26 @@ impl fmt::Display for TableKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self{
             TableKey::PrimaryKey(ref columns) => {
-                write!(f, "PRIMARY KEY (")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
-                    write!(f, "{}", column)?;
-                }
-                write!(f, ")")
+                write!(f, "PRIMARY KEY ")?;
+                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
             }
             TableKey::UniqueKey(ref name, ref columns) => {
-                write!(f, "UNIQUE KEY")?;
+                write!(f, "UNIQUE KEY ")?;
                 if let Some(ref name) = *name {
-                    write!(f, "{}", name)?;
+                    write!(f, "{} ", name)?;
                 }
-                write!(f, "(")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
-                    write!(f, "{}", column)?;
-                }
-                write!(f, ")")
+                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
             }
             TableKey::FulltextKey(ref name, ref columns) => {
-                write!(f, "FULLTEXT KEY")?;
+                write!(f, "FULLTEXT KEY ")?;
                 if let Some(ref name) = *name {
-                    write!(f, "{}", name)?;
+                    write!(f, "{} ", name)?;
                 }
-                write!(f, "(")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
-                    write!(f, "{}", column)?;
-                }
-                write!(f, ")")
+                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
             }
             TableKey::Key(ref name, ref columns) => {
-                write!(f, "KEY")?;
-                write!(f, "{}", name)?;
-                write!(f, "(")?;
-                for (i, column) in columns.iter().enumerate(){
-                    if i > 0 { write!(f, ", ")?; }
-                    write!(f, "{}", column)?;
-                }
-                write!(f, ")")
+                write!(f, "KEY {} ", name)?;
+                write!(f, "({})", columns.iter().map(|c| c.name.to_owned() ).collect::<Vec<_>>().join(", "))
             }
         }
 

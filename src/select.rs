@@ -1,14 +1,15 @@
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::str;
 
 use column::Column;
 use common::FieldExpression;
-use common::{as_alias, field_definition_expr, field_list, unsigned_number, statement_terminator,
-             table_list, table_reference, column_identifier_no_alias};
+use common::{as_alias, column_identifier_no_alias, field_definition_expr, field_list,
+             statement_terminator, table_list, table_reference, unsigned_number};
 use condition::{condition_expr, ConditionExpression};
 use join::{join_operator, JoinConstraint, JoinOperator, JoinRightSide};
 use table::Table;
+use std::fmt;
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub struct GroupByClause {
@@ -50,6 +51,42 @@ pub struct SelectStatement {
     pub group_by: Option<GroupByClause>,
     pub order: Option<OrderClause>,
     pub limit: Option<LimitClause>,
+}
+
+impl fmt::Display for SelectStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SELECT ")?;
+        if self.distinct {
+            write!(f, "DISTINCT ")?;
+        }
+        write!(
+            f,
+            "{}",
+            self.fields
+                .iter()
+                .map(|field| format!("{}", field))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+
+        if self.tables.len() > 0 {
+            write!(f, " FROM ")?;
+            write!(
+                f,
+                "{}",
+                self.tables
+                    .iter()
+                    .map(|table| format!("{}", table))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        if let Some(ref where_clause) = self.where_clause {
+            write!(f, " WHERE ")?;
+            write!(f, "{}", where_clause)?;
+        }
+        Ok(())
+    }
 }
 
 /// Parse GROUP BY clause
@@ -214,7 +251,7 @@ named!(order_clause<&[u8], OrderClause>,
 );
 
 /// Parse WHERE clause of a selection
-named!(where_clause<&[u8], ConditionExpression>,
+named!(pub where_clause<&[u8], ConditionExpression>,
     complete!(chain!(
         multispace? ~
         caseless_tag!("where") ~
@@ -306,6 +343,14 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn format_with_colum_alias() {
+        let qstring = "SELECT users.id as user_id, users.name as username FROM users;";
+        let expected = "SELECT users.id AS user_id, users.name AS username FROM users";
+        let res = selection(qstring.as_bytes());
+        assert_eq!(expected, format!("{}", res.unwrap().1));
     }
 
     #[test]
@@ -881,8 +926,8 @@ mod tests {
                     &[
                         "PCMember.contactId",
                         "ChairAssistant.contactId",
-                        "Chair.contactId"
-                    ]
+                        "Chair.contactId",
+                    ],
                 ),
                 join: vec![
                     mkjoin("PaperReview", "contactId"),
@@ -906,14 +951,12 @@ mod tests {
         let inner_where_clause = ComparisonOp(ConditionTree {
             left: Box::new(Base(Field(Column::from("orders.o_id")))),
             right: Box::new(Base(Field(Column::from("order_line.ol_o_id")))),
-            operator: Operator::Equal
+            operator: Operator::Equal,
         });
 
         let inner_select = SelectStatement {
             tables: vec![Table::from("orders"), Table::from("order_line")],
-            fields: columns(&[
-                "o_c_id"
-            ]),
+            fields: columns(&["o_c_id"]),
             where_clause: Some(inner_where_clause),
             ..Default::default()
         };
@@ -926,15 +969,12 @@ mod tests {
 
         let outer_select = SelectStatement {
             tables: vec![Table::from("orders"), Table::from("order_line")],
-            fields: columns(&[
-                "ol_i_id"
-            ]),
+            fields: columns(&["ol_i_id"]),
             where_clause: Some(outer_where_clause),
             ..Default::default()
         };
 
         assert_eq!(res.unwrap().1, outer_select);
-
     }
 
     #[test]
@@ -955,7 +995,7 @@ mod tests {
                     alias: None,
                     table: None,
                     function: Some(Box::new(agg_expr)),
-                })
+                }),
             ],
             ..Default::default()
         };
@@ -963,7 +1003,7 @@ mod tests {
         let cop1 = ComparisonOp(ConditionTree {
             left: Box::new(Base(Field(Column::from("orders.o_id")))),
             right: Box::new(Base(Field(Column::from("order_line.ol_o_id")))),
-            operator: Operator::Equal
+            operator: Operator::Equal,
         });
 
         let cop2 = ComparisonOp(ConditionTree {
@@ -980,9 +1020,7 @@ mod tests {
 
         let inner_select = SelectStatement {
             tables: vec![Table::from("orders"), Table::from("order_line")],
-            fields: columns(&[
-                "o_c_id"
-            ]),
+            fields: columns(&["o_c_id"]),
             where_clause: Some(inner_where_clause),
             ..Default::default()
         };
@@ -995,15 +1033,12 @@ mod tests {
 
         let outer_select = SelectStatement {
             tables: vec![Table::from("orders"), Table::from("order_line")],
-            fields: columns(&[
-                "ol_i_id"
-            ]),
+            fields: columns(&["ol_i_id"]),
             where_clause: Some(outer_where_clause),
             ..Default::default()
         };
 
         assert_eq!(res.unwrap().1, outer_select);
-
     }
 
     #[test]
@@ -1028,27 +1063,24 @@ mod tests {
         // N.B.: Don't alias the inner select to `inner`, which is, well, a SQL keyword!
         let inner_select = SelectStatement {
             tables: vec![Table::from("order_line")],
-            fields: columns(&[
-                "ol_i_id"
-            ]),
+            fields: columns(&["ol_i_id"]),
             ..Default::default()
         };
 
         let outer_select = SelectStatement {
             tables: vec![Table::from("orders")],
-            fields: columns(&[
-                "o_id",
-                "ol_i_id"
-            ]),
-            join: vec![JoinClause {
-                operator: JoinOperator::Join,
-                right: JoinRightSide::NestedSelect(Box::new(inner_select), Some("ids".into())),
-                constraint: JoinConstraint::On(ComparisonOp(ConditionTree {
-                    operator: Operator::Equal,
-                    left: Box::new(Base(Field(Column::from("orders.o_id")))),
-                    right: Box::new(Base(Field(Column::from("ids.ol_i_id")))),
-                })),
-            }],
+            fields: columns(&["o_id", "ol_i_id"]),
+            join: vec![
+                JoinClause {
+                    operator: JoinOperator::Join,
+                    right: JoinRightSide::NestedSelect(Box::new(inner_select), Some("ids".into())),
+                    constraint: JoinConstraint::On(ComparisonOp(ConditionTree {
+                        operator: Operator::Equal,
+                        left: Box::new(Base(Field(Column::from("orders.o_id")))),
+                        right: Box::new(Base(Field(Column::from("ids.ol_i_id")))),
+                    })),
+                },
+            ],
             ..Default::default()
         };
 

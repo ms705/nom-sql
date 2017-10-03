@@ -1,13 +1,14 @@
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::collections::{HashSet, VecDeque};
 use std::str;
+use std::fmt;
 
 use column::Column;
 use common::{binary_comparison_operator, column_identifier, integer_literal, string_literal,
              Literal, Operator};
 
-use select::{SelectStatement, nested_selection};
+use select::{nested_selection, SelectStatement};
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ConditionBase {
@@ -17,11 +18,30 @@ pub enum ConditionBase {
     NestedSelect(Box<SelectStatement>),
 }
 
+impl fmt::Display for ConditionBase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ConditionBase::Field(ref col) => write!(f, "{}", col),
+            ConditionBase::Literal(ref literal) => write!(f, "{}", literal.to_string()),
+            ConditionBase::Placeholder => write!(f, "?"),
+            ConditionBase::NestedSelect(ref select) => write!(f, "{}", select),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub struct ConditionTree {
     pub operator: Operator,
     pub left: Box<ConditionExpression>,
     pub right: Box<ConditionExpression>,
+}
+
+impl fmt::Display for ConditionTree {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.left)?;
+        write!(f, " {} ", self.operator)?;
+        write!(f, "{}", self.right)
+    }
 }
 
 impl<'a> ConditionTree {
@@ -57,6 +77,17 @@ pub enum ConditionExpression {
     LogicalOp(ConditionTree),
     NegationOp(Box<ConditionExpression>),
     Base(ConditionBase),
+}
+
+impl fmt::Display for ConditionExpression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ConditionExpression::ComparisonOp(ref tree) => write!(f, "{}", tree),
+            ConditionExpression::LogicalOp(ref tree) => write!(f, "{}", tree),
+            ConditionExpression::NegationOp(ref expr) => write!(f, "NOT {}", expr),
+            ConditionExpression::Base(ref base) => write!(f, "{}", base),
+        }
+    }
 }
 
 /// Parse a conditional expression into a condition tree structure
@@ -187,7 +218,7 @@ named!(predicate<&[u8], ConditionExpression>,
 mod tests {
     use super::*;
     use column::Column;
-    use common::{Literal, Operator, FieldExpression};
+    use common::{FieldExpression, Literal, Operator};
 
     fn columns(cols: &[&str]) -> Vec<FieldExpression> {
         cols.iter()
@@ -237,7 +268,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Placeholder
+                ConditionBase::Placeholder,
             )
         );
     }
@@ -253,7 +284,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::Integer(42 as i64))
+                ConditionBase::Literal(Literal::Integer(42 as i64)),
             )
         );
 
@@ -263,7 +294,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::String(String::from("hello")))
+                ConditionBase::Literal(Literal::String(String::from("hello"))),
             )
         );
     }
@@ -279,7 +310,7 @@ mod tests {
             flat_condition_tree(
                 Operator::GreaterOrEqual,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::Integer(42 as i64))
+                ConditionBase::Literal(Literal::Integer(42 as i64)),
             )
         );
 
@@ -289,7 +320,7 @@ mod tests {
             flat_condition_tree(
                 Operator::LessOrEqual,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::Integer(5 as i64))
+                ConditionBase::Literal(Literal::Integer(5 as i64)),
             )
         );
     }
@@ -304,7 +335,7 @@ mod tests {
             flat_condition_tree(
                 Operator::Equal,
                 ConditionBase::Field(Column::from("foo")),
-                ConditionBase::Literal(Literal::String(String::from("")))
+                ConditionBase::Literal(Literal::String(String::from(""))),
             )
         );
     }
@@ -447,7 +478,6 @@ mod tests {
         );
 
         assert_eq!(res.unwrap().1, expected);
-
     }
 
     #[test]
@@ -470,23 +500,18 @@ mod tests {
         let left = flat_condition_tree(
             Operator::In,
             Field("paperId".into()),
-            NestedSelect(nested_select)
+            NestedSelect(nested_select),
         );
 
-        let right = flat_condition_tree(
-            Operator::Greater,
-            Field("size".into()),
-            Literal(0.into()),
-        );
+        let right = flat_condition_tree(Operator::Greater, Field("size".into()), Literal(0.into()));
 
         let expected = ConditionExpression::LogicalOp(ConditionTree {
             left: Box::new(left),
             right: Box::new(right),
-            operator: Operator::And
+            operator: Operator::And,
         });
 
         assert_eq!(res.unwrap().1, expected);
-
     }
 
 }

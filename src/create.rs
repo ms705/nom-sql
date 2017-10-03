@@ -1,5 +1,5 @@
 use nom::{alphanumeric, digit, multispace};
-use nom::{IResult, Err, ErrorKind, Needed};
+use nom::{Err, ErrorKind, IResult, Needed};
 use std::str;
 use std::str::FromStr;
 
@@ -7,12 +7,40 @@ use common::{column_identifier_no_alias, field_list, sql_identifier, statement_t
              table_reference, Literal, SqlType, TableKey};
 use column::{ColumnConstraint, ColumnSpecification};
 use table::Table;
+use std::fmt;
 
 #[derive(Clone, Debug, Default, Hash, PartialEq, Serialize, Deserialize)]
 pub struct CreateTableStatement {
     pub table: Table,
     pub fields: Vec<ColumnSpecification>,
     pub keys: Option<Vec<TableKey>>,
+}
+
+impl fmt::Display for CreateTableStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CREATE TABLE {} ", self.table)?;
+        write!(f, "(")?;
+        write!(
+            f,
+            "{}",
+            self.fields
+                .iter()
+                .map(|field| format!("{}", field))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        if let Some(ref keys) = self.keys {
+            write!(
+                f,
+                ", {}",
+                keys.iter()
+                    .map(|key| format!("{}", key))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        write!(f, ")")
+    }
 }
 
 fn len_as_u16(len: &[u8]) -> u16 {
@@ -420,6 +448,15 @@ mod tests {
     }
 
     #[test]
+    fn simple_create_reformat() {
+        let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255));";
+        let expected = "CREATE TABLE users (id BIGINT(20), name VARCHAR(255), email VARCHAR(255))";
+
+        let res = creation(qstring.as_bytes());
+        assert_eq!(format!("{}", res.unwrap().1), expected);
+    }
+
+    #[test]
     fn mediawiki_create() {
         let qstring = "CREATE TABLE user_newtalk (  user_id int(5) NOT NULL default '0',  user_ip \
                        varchar(40) NOT NULL default '') TYPE=MyISAM;";
@@ -435,7 +472,7 @@ mod tests {
                         vec![
                             ColumnConstraint::NotNull,
                             ColumnConstraint::DefaultValue(Literal::String(String::from("0"))),
-                        ],
+                        ]
                     ),
                     ColumnSpecification::with_constraints(
                         Column::from("user_ip"),
@@ -443,12 +480,23 @@ mod tests {
                         vec![
                             ColumnConstraint::NotNull,
                             ColumnConstraint::DefaultValue(Literal::String(String::from(""))),
-                        ],
+                        ]
                     ),
                 ],
                 ..Default::default()
             }
         );
+    }
+    #[test]
+    fn mediawiki_create_reformat() {
+        let qstring = "CREATE TABLE user_newtalk (  user_id int(5) NOT NULL default '0',  user_ip \
+                       varchar(40) NOT NULL default '') TYPE=MyISAM;";
+
+        let expected = "CREATE TABLE user_newtalk (user_id INT(5) NOT NULL DEFAULT '0', user_ip \
+                        VARCHAR(40) NOT NULL DEFAULT '')";
+
+        let res = creation(qstring.as_bytes());
+        assert_eq!(format!("{}", res.unwrap().1), expected);
     }
 
     #[test]
@@ -489,7 +537,41 @@ mod tests {
                 keys: Some(vec![
                     TableKey::UniqueKey(
                         Some(String::from("id_k")),
-                        vec![Column::from("id")],
+                        vec![Column::from("id")]
+                    ),
+                ]),
+                ..Default::default()
+            }
+        );
+    }
+    #[test]
+    fn keys_reformat() {
+        // simple primary key
+        let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255), \
+                       PRIMARY KEY (id));";
+        let expected = "CREATE TABLE users (id BIGINT(20), name VARCHAR(255), email VARCHAR(255), \
+                        PRIMARY KEY (id))";
+        let res = creation(qstring.as_bytes());
+        assert_eq!(format!("{}", res.unwrap().1), expected);
+
+        // named unique key
+        let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255), \
+                       UNIQUE KEY id_k (id));";
+
+        let res = creation(qstring.as_bytes());
+        assert_eq!(
+            res.unwrap().1,
+            CreateTableStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20)),
+                    ColumnSpecification::new(Column::from("name"), SqlType::Varchar(255)),
+                    ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
+                ],
+                keys: Some(vec![
+                    TableKey::UniqueKey(
+                        Some(String::from("id_k")),
+                        vec![Column::from("id")]
                     ),
                 ]),
                 ..Default::default()

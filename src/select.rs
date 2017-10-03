@@ -330,6 +330,15 @@ mod tests {
     }
 
     #[test]
+    fn format_with_colum_alias() {
+        let qstring = "SELECT users.id as user_id, users.name as username FROM users;";
+        let expected = "SELECT users.id AS user_id, users.name AS username FROM users";
+        let res = selection(qstring.as_bytes());
+        assert_eq!(expected, format!("{}",res.unwrap().1));
+
+    }
+
+    #[test]
     fn select_literals() {
         use common::Literal;
 

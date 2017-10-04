@@ -5,7 +5,7 @@ use create::*;
 use insert::*;
 use select::*;
 use std::fmt;
-use SqlQuery::{Select,Insert,CreateTable};
+use SqlQuery::{Select, Insert, CreateTable};
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub enum SqlQuery {
@@ -14,13 +14,12 @@ pub enum SqlQuery {
     Select(SelectStatement),
 }
 
-impl fmt::Display for SqlQuery{
-
+impl fmt::Display for SqlQuery {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
+        match *self {
             Select(ref select) => write!(f, "{}", select),
             Insert(ref insert) => write!(f, "{}", insert),
-            CreateTable(ref create) => write!(f, "{}", create)
+            CreateTable(ref create) => write!(f, "{}", create),
         }
     }
 }
@@ -104,11 +103,11 @@ mod tests {
         assert!(res3.is_ok());
         assert!(res4.is_ok());
 
-        assert_eq!(qstring0, format!("{}",res0.unwrap()));
-        assert_eq!(qstring1, format!("{}",res1.unwrap()));
-        assert_eq!(qstring2, format!("{}",res2.unwrap()));
-        assert_eq!(qstring3, format!("{}",res3.unwrap()));
-        assert_eq!(qstring4, format!("{}",res4.unwrap()));
+        assert_eq!(qstring0, format!("{}", res0.unwrap()));
+        assert_eq!(qstring1, format!("{}", res1.unwrap()));
+        assert_eq!(qstring2, format!("{}", res2.unwrap()));
+        assert_eq!(qstring3, format!("{}", res3.unwrap()));
+        assert_eq!(qstring4, format!("{}", res4.unwrap()));
     }
 
     #[test]
@@ -129,9 +128,9 @@ mod tests {
         assert!(res2.is_ok());
         assert!(res3.is_ok());
 
-        assert_eq!(expected1, format!("{}",res1.unwrap()));
-        assert_eq!(expected2, format!("{}",res2.unwrap()));
-        assert_eq!(expected3, format!("{}",res3.unwrap()));
+        assert_eq!(expected1, format!("{}", res1.unwrap()));
+        assert_eq!(expected2, format!("{}", res2.unwrap()));
+        assert_eq!(expected3, format!("{}", res3.unwrap()));
     }
 
     #[test]
@@ -165,7 +164,7 @@ mod tests {
         let qstring0 = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
         let res0 = parse_query(qstring0);
         assert!(res0.is_ok());
-        assert_eq!(qstring0, format!("{}",res0.unwrap()));
+        assert_eq!(qstring0, format!("{}", res0.unwrap()));
     }
 
     #[test]
@@ -174,7 +173,7 @@ mod tests {
         let expected0 = "INSERT INTO users (0, 1) VALUES ('aaa', 'xxx')";
         let res0 = parse_query(qstring0);
         assert!(res0.is_ok());
-        assert_eq!(expected0, format!("{}",res0.unwrap()));
+        assert_eq!(expected0, format!("{}", res0.unwrap()));
     }
 
     #[test]
@@ -183,7 +182,7 @@ mod tests {
         let expected0 = "INSERT INTO users (name, password) VALUES ('aaa', 'xxx')";
         let res0 = parse_query(qstring0);
         assert!(res0.is_ok());
-        assert_eq!(expected0, format!("{}",res0.unwrap()));
+        assert_eq!(expected0, format!("{}", res0.unwrap()));
     }
 
 

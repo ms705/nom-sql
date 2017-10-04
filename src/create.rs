@@ -16,14 +16,28 @@ pub struct CreateTableStatement {
     pub keys: Option<Vec<TableKey>>,
 }
 
-impl fmt::Display for CreateTableStatement{
-
+impl fmt::Display for CreateTableStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CREATE TABLE {} ", self.table)?;
         write!(f, "(")?;
-        write!(f, "{}", self.fields.iter().map(|field| format!("{}",field) ).collect::<Vec<_>>().join(", "))?;
+        write!(
+            f,
+            "{}",
+            self.fields
+                .iter()
+                .map(|field| format!("{}", field))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
         if let Some(ref keys) = self.keys {
-            write!(f, ", {}", keys.iter().map(|key| format!("{}", key) ).collect::<Vec<_>>().join(", "))?;
+            write!(
+                f,
+                ", {}",
+                keys.iter()
+                    .map(|key| format!("{}", key))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
         }
         write!(f, ")")
     }
@@ -439,7 +453,7 @@ mod tests {
         let expected = "CREATE TABLE users (id BIGINT(20), name VARCHAR(255), email VARCHAR(255))";
 
         let res = creation(qstring.as_bytes());
-        assert_eq!(format!("{}", res.unwrap().1), expected );
+        assert_eq!(format!("{}", res.unwrap().1), expected);
     }
 
     #[test]
@@ -458,7 +472,7 @@ mod tests {
                         vec![
                             ColumnConstraint::NotNull,
                             ColumnConstraint::DefaultValue(Literal::String(String::from("0"))),
-                        ],
+                        ]
                     ),
                     ColumnSpecification::with_constraints(
                         Column::from("user_ip"),
@@ -466,7 +480,7 @@ mod tests {
                         vec![
                             ColumnConstraint::NotNull,
                             ColumnConstraint::DefaultValue(Literal::String(String::from(""))),
-                        ],
+                        ]
                     ),
                 ],
                 ..Default::default()
@@ -482,7 +496,7 @@ mod tests {
                        VARCHAR(40) NOT NULL DEFAULT '')";
 
         let res = creation(qstring.as_bytes());
-        assert_eq!(format!("{}", res.unwrap().1), expected );
+        assert_eq!(format!("{}", res.unwrap().1), expected);
     }
 
     #[test]
@@ -523,7 +537,7 @@ mod tests {
                 keys: Some(vec![
                     TableKey::UniqueKey(
                         Some(String::from("id_k")),
-                        vec![Column::from("id")],
+                        vec![Column::from("id")]
                     ),
                 ]),
                 ..Default::default()
@@ -538,7 +552,7 @@ mod tests {
         let expected = "CREATE TABLE users (id BIGINT(20), name VARCHAR(255), email VARCHAR(255), \
                        PRIMARY KEY (id))";
         let res = creation(qstring.as_bytes());
-        assert_eq!(format!("{}",res.unwrap().1), expected);
+        assert_eq!(format!("{}", res.unwrap().1), expected);
 
         // named unique key
         let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255), \
@@ -557,7 +571,7 @@ mod tests {
                 keys: Some(vec![
                     TableKey::UniqueKey(
                         Some(String::from("id_k")),
-                        vec![Column::from("id")],
+                        vec![Column::from("id")]
                     ),
                 ]),
                 ..Default::default()

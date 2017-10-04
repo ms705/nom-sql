@@ -49,12 +49,11 @@ pub struct Column {
     pub function: Option<Box<FunctionExpression>>,
 }
 
-impl fmt::Display for Column{
-    
+impl fmt::Display for Column {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(ref table) = self.table{
+        if let Some(ref table) = self.table {
             write!(f, "{}.{}", table, self.name)?;
-        }else{
+        } else {
             write!(f, "{}", self.name)?;
         }
         if let Some(ref alias) = self.alias {
@@ -122,15 +121,14 @@ pub enum ColumnConstraint {
     AutoIncrement,
 }
 
-impl fmt::Display for ColumnConstraint{
+impl fmt::Display for ColumnConstraint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self{
-            ColumnConstraint::NotNull => 
-                write!(f, "NOT NULL"),
-            ColumnConstraint::DefaultValue(ref literal) => 
-                write!(f, "DEFAULT {}", literal.to_string()),
-            ColumnConstraint::AutoIncrement =>
-                write!(f, "AUTOINCREMENT"),
+        match *self {
+            ColumnConstraint::NotNull => write!(f, "NOT NULL"),
+            ColumnConstraint::DefaultValue(ref literal) => {
+                write!(f, "DEFAULT {}", literal.to_string())
+            }
+            ColumnConstraint::AutoIncrement => write!(f, "AUTOINCREMENT"),
         }
     }
 }
@@ -165,7 +163,6 @@ impl ColumnSpecification {
 }
 
 impl fmt::Display for ColumnSpecification {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} {}", self.column, self.sql_type)?;
         for constraint in self.constraints.iter() {
@@ -196,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn column_wit_alias(){
+    fn column_wit_alias() {
         let c = Column {
             name: String::from("col"),
             alias: Some("alias".into()),

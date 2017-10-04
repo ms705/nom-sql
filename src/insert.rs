@@ -13,12 +13,27 @@ pub struct InsertStatement {
     pub fields: Vec<(Column, Literal)>,
 }
 
-impl fmt::Display for InsertStatement{
-
+impl fmt::Display for InsertStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "INSERT INTO {}", self.table)?;
-        write!(f, " ({})", self.fields.iter().map(|&(ref col, _) | col.name.to_owned() ).collect::<Vec<_>>().join(", "))?;
-        write!(f, " VALUES ({})", self.fields.iter().map(|&(_, ref literal) | literal.to_string() ).collect::<Vec<_>>().join(", "))
+        write!(
+            f,
+            " ({})",
+            self.fields
+                .iter()
+                .map(|&(ref col, _)| col.name.to_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        write!(
+            f,
+            " VALUES ({})",
+            self.fields
+                .iter()
+                .map(|&(_, ref literal)| literal.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 

@@ -49,6 +49,20 @@ pub struct Column {
     pub function: Option<Box<FunctionExpression>>,
 }
 
+impl fmt::Display for Column {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref table) = self.table {
+            write!(f, "{}.{}", table, self.name)?;
+        } else {
+            write!(f, "{}", self.name)?;
+        }
+        if let Some(ref alias) = self.alias {
+            write!(f, " AS {}", alias)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a str> for Column {
     fn from(c: &str) -> Column {
         match c.find(".") {
@@ -107,6 +121,18 @@ pub enum ColumnConstraint {
     AutoIncrement,
 }
 
+impl fmt::Display for ColumnConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ColumnConstraint::NotNull => write!(f, "NOT NULL"),
+            ColumnConstraint::DefaultValue(ref literal) => {
+                write!(f, "DEFAULT {}", literal.to_string())
+            }
+            ColumnConstraint::AutoIncrement => write!(f, "AUTOINCREMENT"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct ColumnSpecification {
     pub column: Column,
@@ -136,6 +162,16 @@ impl ColumnSpecification {
     }
 }
 
+impl fmt::Display for ColumnSpecification {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.column, self.sql_type)?;
+        for constraint in self.constraints.iter() {
+            write!(f, " {}", constraint)?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,5 +190,17 @@ mod tests {
                 function: None,
             }
         );
+    }
+
+    #[test]
+    fn column_wit_alias() {
+        let c = Column {
+            name: String::from("col"),
+            alias: Some("alias".into()),
+            table: Some(String::from("table")),
+            function: None,
+        };
+        let expected = "table.col AS alias";
+        assert_eq!(expected, format!("{}", c));
     }
 }

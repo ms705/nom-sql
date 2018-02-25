@@ -1,5 +1,4 @@
 use nom::multispace;
-use nom::{Err, ErrorKind, IResult, Needed};
 use std::str;
 
 use common::{opt_multispace, statement_terminator, table_reference, value_list, Literal};

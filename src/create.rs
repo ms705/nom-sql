@@ -1,10 +1,10 @@
 use nom::{alphanumeric, digit, multispace};
-use nom::{IResult, Err, ErrorKind, Needed};
 use std::str;
 use std::str::FromStr;
+use std::fmt;
 
-use common::{column_identifier_no_alias, field_list, sql_identifier, statement_terminator,
-             table_reference, Literal, SqlType, TableKey};
+use common::{column_identifier_no_alias, field_list, opt_multispace, sql_identifier,
+             statement_terminator, table_reference, type_identifier, Literal, SqlType, TableKey};
 use column::{ColumnConstraint, ColumnSpecification};
 use table::Table;
 
@@ -15,181 +15,87 @@ pub struct CreateTableStatement {
     pub keys: Option<Vec<TableKey>>,
 }
 
-fn len_as_u16(len: &[u8]) -> u16 {
-    match str::from_utf8(len) {
-        Ok(s) => {
-            match u16::from_str(s) {
-                Ok(v) => v,
-                Err(e) => panic!(e),
-            }
+impl fmt::Display for CreateTableStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CREATE TABLE {} ", self.table)?;
+        write!(f, "(")?;
+        write!(
+            f,
+            "{}",
+            self.fields
+                .iter()
+                .map(|field| format!("{}", field))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        if let Some(ref keys) = self.keys {
+            write!(
+                f,
+                ", {}",
+                keys.iter()
+                    .map(|key| format!("{}", key))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
         }
-        Err(e) => panic!(e),
+        write!(f, ")")
     }
 }
-
-/// A SQL type specifier.
-named!(pub type_identifier<&[u8], SqlType>,
-    alt_complete!(
-          chain!(
-              caseless_tag!("mediumtext"),
-              || { SqlType::Mediumtext }
-          )
-        | chain!(
-              caseless_tag!("timestamp") ~
-              _len: opt!(delimited!(tag!("("), digit, tag!(")"))) ~
-              multispace?,
-              || { SqlType::Timestamp }
-          )
-        | chain!(
-              caseless_tag!("varbinary") ~
-              len: delimited!(tag!("("), digit, tag!(")")) ~
-              multispace?,
-              || { SqlType::Varbinary(len_as_u16(len)) }
-          )
-        | chain!(
-              caseless_tag!("mediumblob"),
-              || { SqlType::Mediumblob }
-          )
-        | chain!(
-              caseless_tag!("longblob"),
-              || { SqlType::Longblob }
-          )
-        | chain!(
-              caseless_tag!("tinyblob"),
-              || { SqlType::Tinyblob }
-          )
-        | chain!(
-              caseless_tag!("tinytext"),
-              || { SqlType::Tinytext }
-          )
-        | chain!(
-              caseless_tag!("varchar") ~
-              len: delimited!(tag!("("), digit, tag!(")")) ~
-              multispace? ~
-              _binary: opt!(caseless_tag!("binary")),
-              || { SqlType::Varchar(len_as_u16(len)) }
-          )
-        | chain!(
-              caseless_tag!("tinyint") ~
-              len: delimited!(tag!("("), digit, tag!(")")) ~
-              multispace? ~
-              _signed: opt!(alt_complete!(caseless_tag!("unsigned") | caseless_tag!("signed"))),
-              || { SqlType::Tinyint(len_as_u16(len)) }
-          )
-        | chain!(
-              caseless_tag!("bigint") ~
-              len: delimited!(tag!("("), digit, tag!(")")) ~
-              multispace? ~
-              _signed: opt!(alt_complete!(caseless_tag!("unsigned") | caseless_tag!("signed"))),
-              || { SqlType::Bigint(len_as_u16(len)) }
-          )
-        | chain!(
-              caseless_tag!("double") ~
-              multispace? ~
-              _signed: opt!(alt_complete!(caseless_tag!("unsigned") | caseless_tag!("signed"))),
-              || { SqlType::Double }
-          )
-        | chain!(
-              caseless_tag!("float") ~
-              multispace? ~
-              _signed: opt!(alt_complete!(caseless_tag!("unsigned") | caseless_tag!("signed"))),
-              || { SqlType::Float }
-          )
-        | chain!(
-              caseless_tag!("blob"),
-              || { SqlType::Blob }
-          )
-        | chain!(
-              caseless_tag!("date"),
-              || { SqlType::Date }
-          )
-        | chain!(
-              caseless_tag!("real") ~
-              multispace? ~
-              _signed: opt!(alt_complete!(caseless_tag!("unsigned") | caseless_tag!("signed"))),
-              || { SqlType::Real }
-          )
-        | chain!(
-              caseless_tag!("text"),
-              || { SqlType::Text }
-          )
-        | chain!(
-              caseless_tag!("char") ~
-              len: delimited!(tag!("("), digit, tag!(")")) ~
-              multispace? ~
-              _binary: opt!(caseless_tag!("binary")),
-              || { SqlType::Char(len_as_u16(len)) }
-          )
-        | chain!(
-              caseless_tag!("int") ~
-              len: opt!(delimited!(tag!("("), digit, tag!(")"))) ~
-              multispace? ~
-              _signed: opt!(alt_complete!(caseless_tag!("unsigned") | caseless_tag!("signed"))),
-              || { SqlType::Int(match len {
-                  Some(len) => len_as_u16(len),
-                  None => 32 as u16,
-              }) }
-          )
-    )
-);
 
 /// Parse rule for an individual key specification.
 named!(pub key_specification<&[u8], TableKey>,
     alt_complete!(
-          chain!(
-              caseless_tag!("fulltext key") ~
-              multispace? ~
-              name: opt!(sql_identifier) ~
-              multispace? ~
-              columns: delimited!(tag!("("), field_list, tag!(")")),
-              || {
-                  match name {
-                      Some(name) => {
-                          let n = String::from(str::from_utf8(name).unwrap());
-                          TableKey::FulltextKey(Some(n), columns)
-                      },
-                      None => TableKey::FulltextKey(None, columns),
-                  }
-              }
+          do_parse!(
+              tag_no_case!("fulltext key") >>
+              opt_multispace >>
+              name: opt!(sql_identifier) >>
+              opt_multispace >>
+              columns: delimited!(tag!("("), field_list, tag!(")")) >>
+              (match name {
+                  Some(name) => {
+                      let n = String::from(str::from_utf8(name).unwrap());
+                      TableKey::FulltextKey(Some(n), columns)
+                  },
+                  None => TableKey::FulltextKey(None, columns),
+              })
           )
-        | chain!(
-              caseless_tag!("primary key") ~
-              multispace? ~
-              columns: delimited!(tag!("("), field_list, tag!(")")) ~
-              opt!(complete!(chain!(
-                          multispace ~
-                          caseless_tag!("autoincrement"),
-                          || { }
+        | do_parse!(
+              tag_no_case!("primary key") >>
+              opt_multispace >>
+              columns: delimited!(tag!("("), field_list, tag!(")")) >>
+              opt!(complete!(do_parse!(
+                          multispace >>
+                          tag_no_case!("autoincrement") >>
+                          ()
                    ))
-              ),
-              || { TableKey::PrimaryKey(columns) }
+              ) >>
+              (TableKey::PrimaryKey(columns))
           )
-        | chain!(
-              caseless_tag!("unique key") ~
-              multispace? ~
-              name: opt!(sql_identifier) ~
-              multispace? ~
-              columns: delimited!(tag!("("), field_list, tag!(")")),
-              || {
-                  match name {
-                      Some(name) => {
-                          let n = String::from(str::from_utf8(name).unwrap());
-                          TableKey::UniqueKey(Some(n), columns)
-                      },
-                      None => TableKey::UniqueKey(None, columns),
-                  }
-              }
+        | do_parse!(
+              tag_no_case!("unique") >>
+              opt!(preceded!(multispace, tag_no_case!("key"))) >>
+              opt_multispace >>
+              name: opt!(sql_identifier) >>
+              opt_multispace >>
+              columns: delimited!(tag!("("), field_list, tag!(")")) >>
+              (match name {
+                  Some(name) => {
+                      let n = String::from(str::from_utf8(name).unwrap());
+                      TableKey::UniqueKey(Some(n), columns)
+                  },
+                  None => TableKey::UniqueKey(None, columns),
+              })
           )
-        | chain!(
-              caseless_tag!("key") ~
-              multispace? ~
-              name: sql_identifier ~
-              multispace? ~
-              columns: delimited!(tag!("("), field_list, tag!(")")),
-              || {
+        | do_parse!(
+              tag_no_case!("key") >>
+              opt_multispace >>
+              name: sql_identifier >>
+              opt_multispace >>
+              columns: delimited!(tag!("("), field_list, tag!(")")) >>
+              ({
                   let n = String::from(str::from_utf8(name).unwrap());
                   TableKey::Key(n, columns)
-              }
+              })
           )
     )
 );
@@ -197,17 +103,17 @@ named!(pub key_specification<&[u8], TableKey>,
 /// Parse rule for a comma-separated list.
 named!(pub key_specification_list<&[u8], Vec<TableKey>>,
        many1!(
-           complete!(chain!(
-               key: key_specification ~
+           complete!(do_parse!(
+               key: key_specification >>
                opt!(
-                   complete!(chain!(
-                       multispace? ~
-                       tag!(",") ~
-                       multispace?,
-                       || {}
+                   complete!(do_parse!(
+                       opt_multispace >>
+                       tag!(",") >>
+                       opt_multispace >>
+                       ()
                    ))
-               ),
-               || { key }
+               ) >>
+               (key)
            ))
        )
 );
@@ -215,24 +121,24 @@ named!(pub key_specification_list<&[u8], Vec<TableKey>>,
 /// Parse rule for a comma-separated list.
 named!(pub field_specification_list<&[u8], Vec<ColumnSpecification> >,
        many1!(
-           complete!(chain!(
-               identifier: column_identifier_no_alias ~
-               fieldtype: opt!(complete!(chain!(multispace ~
-                                      ti: type_identifier ~
-                                      multispace?,
-                                      || { ti }
+           complete!(do_parse!(
+               identifier: column_identifier_no_alias >>
+               fieldtype: opt!(complete!(do_parse!(multispace >>
+                                      ti: type_identifier >>
+                                      opt_multispace >>
+                                      (ti)
                                ))
-               ) ~
-               constraints: many0!(column_constraint) ~
+               ) >>
+               constraints: many0!(column_constraint) >>
                opt!(
-                   complete!(chain!(
-                       multispace? ~
-                       tag!(",") ~
-                       multispace?,
-                       || {}
+                   complete!(do_parse!(
+                       opt_multispace >>
+                       tag!(",") >>
+                       opt_multispace >>
+                       ()
                    ))
-               ),
-               || {
+               ) >>
+               ({
                    let t = match fieldtype {
                        None => SqlType::Text,
                        Some(ref t) => t.clone(),
@@ -242,7 +148,7 @@ named!(pub field_specification_list<&[u8], Vec<ColumnSpecification> >,
                        sql_type: t,
                        constraints: constraints,
                    }
-               }
+               })
            ))
        )
 );
@@ -250,35 +156,47 @@ named!(pub field_specification_list<&[u8], Vec<ColumnSpecification> >,
 /// Parse rule for a column definition contraint.
 named!(pub column_constraint<&[u8], ColumnConstraint>,
     alt_complete!(
-          chain!(
-              multispace? ~
-              caseless_tag!("not null") ~
-              multispace?,
-              || { ColumnConstraint::NotNull }
+          do_parse!(
+              opt_multispace >>
+              tag_no_case!("not null") >>
+              opt_multispace >>
+              (ColumnConstraint::NotNull)
           )
-        | chain!(
-              multispace? ~
-              caseless_tag!("auto_increment") ~
-              multispace?,
-              || { ColumnConstraint::AutoIncrement }
+        | do_parse!(
+              opt_multispace >>
+              tag_no_case!("auto_increment") >>
+              opt_multispace >>
+              (ColumnConstraint::AutoIncrement)
           )
-        | chain!(
-              multispace? ~
-              caseless_tag!("default") ~
-              multispace ~
+        | do_parse!(
+              opt_multispace >>
+              tag_no_case!("default") >>
+              multispace >>
               def: alt_complete!(
-                    chain!(s: delimited!(tag!("'"), take_until!("'"), tag!("'")), || {
+                    do_parse!(s: delimited!(tag!("'"), take_until!("'"), tag!("'")) >> (
                         Literal::String(String::from(str::from_utf8(s).unwrap()))
-                    })
-                  | chain!(d: map_res!(digit, str::from_utf8), || {
+                    ))
+                  | do_parse!(d: map_res!(digit, str::from_utf8) >> (
                       Literal::Integer(i64::from_str(d).unwrap())
-                    })
-                  | chain!(tag!("''"), || { Literal::String(String::from("")) })
-                  | chain!(caseless_tag!("null"), || { Literal::Null })
-                  | chain!(caseless_tag!("current_timestamp"), || { Literal::CurrentTimestamp })
-              ) ~
-              multispace?,
-              || { ColumnConstraint::DefaultValue(def) }
+                    ))
+                  | do_parse!(tag!("''") >> (Literal::String(String::from(""))))
+                  | do_parse!(tag_no_case!("null") >> (Literal::Null))
+                  | do_parse!(tag_no_case!("current_timestamp") >> (Literal::CurrentTimestamp))
+              ) >>
+              opt_multispace >>
+              (ColumnConstraint::DefaultValue(def))
+          )
+        | do_parse!(
+              opt_multispace >>
+              tag_no_case!("primary key") >>
+              opt_multispace >>
+              (ColumnConstraint::PrimaryKey)
+          )
+        | do_parse!(
+              opt_multispace >>
+              tag_no_case!("unique") >>
+              opt_multispace >>
+              (ColumnConstraint::Unique)
           )
     )
 );
@@ -286,75 +204,75 @@ named!(pub column_constraint<&[u8], ColumnConstraint>,
 /// Parse rule for a SQL CREATE TABLE query.
 /// TODO(malte): support types, TEMPORARY tables, IF NOT EXISTS, AS stmt
 named!(pub creation<&[u8], CreateTableStatement>,
-    complete!(chain!(
-        caseless_tag!("create") ~
-        multispace ~
-        caseless_tag!("table") ~
-        multispace ~
-        table: table_reference ~
-        multispace ~
-        tag!("(") ~
-        multispace? ~
-        fields: field_specification_list ~
-        multispace? ~
-        keys: opt!(key_specification_list) ~
-        multispace? ~
-        tag!(")") ~
-        multispace? ~
+    complete!(do_parse!(
+        tag_no_case!("create") >>
+        multispace >>
+        tag_no_case!("table") >>
+        multispace >>
+        table: table_reference >>
+        multispace >>
+        tag!("(") >>
+        opt_multispace >>
+        fields: field_specification_list >>
+        opt_multispace >>
+        keys: opt!(key_specification_list) >>
+        opt_multispace >>
+        tag!(")") >>
+        opt_multispace >>
         // XXX(malte): wrap the two below in a permutation! rule that permits arbitrary ordering
         opt!(
             complete!(
-                chain!(
-                    caseless_tag!("type") ~
-                    multispace? ~
-                    tag!("=") ~
-                    multispace? ~
-                    alphanumeric,
-                    || {}
+                do_parse!(
+                    tag_no_case!("type") >>
+                    opt_multispace >>
+                    tag!("=") >>
+                    opt_multispace >>
+                    alphanumeric >>
+                    ()
                 )
             )
-        ) ~
-        multispace? ~
+        ) >>
+        opt_multispace >>
         opt!(
             complete!(
-                chain!(
-                    caseless_tag!("pack_keys") ~
-                    multispace? ~
-                    tag!("=") ~
-                    multispace? ~
-                    alt_complete!(tag!("0") | tag!("1")),
-                    || {}
+                do_parse!(
+                    tag_no_case!("pack_keys") >>
+                    opt_multispace >>
+                    tag!("=") >>
+                    opt_multispace >>
+                    alt_complete!(tag!("0") | tag!("1")) >>
+                    ()
                 )
             )
-        ) ~
-        multispace? ~
+        ) >>
+        opt_multispace >>
         opt!(
             complete!(
-                chain!(
-                    caseless_tag!("engine") ~
-                    multispace? ~
-                    tag!("=") ~
-                    multispace? ~
-                    alphanumeric,
-                    || {}
+                do_parse!(
+                    tag_no_case!("engine") >>
+                    opt_multispace >>
+                    tag!("=") >>
+                    opt_multispace >>
+                    alphanumeric >>
+                    ()
                 )
             )
-        ) ~
-        multispace? ~
+        ) >>
+        opt_multispace >>
         opt!(
             complete!(
-                chain!(
-                    caseless_tag!("default charset") ~
-                    multispace? ~
-                    tag!("=") ~
-                    multispace? ~
-                    alt_complete!(tag!("utf8")),
-                    || {}
+                do_parse!(
+                    tag_no_case!("default charset") >>
+                    opt_multispace >>
+                    tag!("=") >>
+                    opt_multispace >>
+                    alt_complete!(tag!("utf8")) >>
+                    ()
                 )
             )
-        ) ~
-        statement_terminator,
-        || {
+        ) >>
+        statement_terminator >>
+        ({
             // "table AS alias" isn't legal in CREATE statements
             assert!(table.alias.is_none());
 
@@ -363,7 +281,7 @@ named!(pub creation<&[u8], CreateTableStatement>,
                 fields: fields,
                 keys: keys,
             }
-        }
+        })
     ))
 );
 
@@ -391,9 +309,13 @@ mod tests {
         let qstring = "id bigint(20), name varchar(255),";
 
         let res = field_specification_list(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   vec![ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20)),
-                        ColumnSpecification::new(Column::from("name"), SqlType::Varchar(255))]);
+        assert_eq!(
+            res.unwrap().1,
+            vec![
+                ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20)),
+                ColumnSpecification::new(Column::from("name"), SqlType::Varchar(255)),
+            ]
+        );
     }
 
     #[test]
@@ -401,17 +323,18 @@ mod tests {
         let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255));";
 
         let res = creation(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   CreateTableStatement {
-                       table: Table::from("users"),
-                       fields: vec![ColumnSpecification::new(Column::from("id"),
-                                                             SqlType::Bigint(20)),
-                                    ColumnSpecification::new(Column::from("name"),
-                                                             SqlType::Varchar(255)),
-                                    ColumnSpecification::new(Column::from("email"),
-                                                             SqlType::Varchar(255))],
-                       ..Default::default()
-                   });
+        assert_eq!(
+            res.unwrap().1,
+            CreateTableStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20)),
+                    ColumnSpecification::new(Column::from("name"), SqlType::Varchar(255)),
+                    ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
+                ],
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -419,24 +342,31 @@ mod tests {
         let qstring = "CREATE TABLE user_newtalk (  user_id int(5) NOT NULL default '0',  user_ip \
                        varchar(40) NOT NULL default '') TYPE=MyISAM;";
         let res = creation(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   CreateTableStatement {
-                       table: Table::from("user_newtalk"),
-                       fields: vec![
-                           ColumnSpecification::with_constraints(
-                               Column::from("user_id"),
-                               SqlType::Int(5),
-                               vec![ColumnConstraint::NotNull,
-                                    ColumnConstraint::DefaultValue(Literal::String(String::from("0")))]),
-                           ColumnSpecification::with_constraints(
-                               Column::from("user_ip"),
-                               SqlType::Varchar(40),
-                               vec![ColumnConstraint::NotNull,
-                                    ColumnConstraint::DefaultValue(
-                                        Literal::String(String::from("")))])
-                       ],
-                       ..Default::default()
-                   });
+        assert_eq!(
+            res.unwrap().1,
+            CreateTableStatement {
+                table: Table::from("user_newtalk"),
+                fields: vec![
+                    ColumnSpecification::with_constraints(
+                        Column::from("user_id"),
+                        SqlType::Int(5),
+                        vec![
+                            ColumnConstraint::NotNull,
+                            ColumnConstraint::DefaultValue(Literal::String(String::from("0"))),
+                        ],
+                    ),
+                    ColumnSpecification::with_constraints(
+                        Column::from("user_ip"),
+                        SqlType::Varchar(40),
+                        vec![
+                            ColumnConstraint::NotNull,
+                            ColumnConstraint::DefaultValue(Literal::String(String::from(""))),
+                        ],
+                    ),
+                ],
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -446,36 +376,127 @@ mod tests {
                        PRIMARY KEY (id));";
 
         let res = creation(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   CreateTableStatement {
-                       table: Table::from("users"),
-                       fields: vec![ColumnSpecification::new(Column::from("id"),
-                                                             SqlType::Bigint(20)),
-                                    ColumnSpecification::new(Column::from("name"),
-                                                             SqlType::Varchar(255)),
-                                    ColumnSpecification::new(Column::from("email"),
-                                                             SqlType::Varchar(255))],
-                       keys: Some(vec![TableKey::PrimaryKey(vec![Column::from("id")])]),
-                       ..Default::default()
-                   });
+        assert_eq!(
+            res.unwrap().1,
+            CreateTableStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20)),
+                    ColumnSpecification::new(Column::from("name"), SqlType::Varchar(255)),
+                    ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
+                ],
+                keys: Some(vec![TableKey::PrimaryKey(vec![Column::from("id")])]),
+                ..Default::default()
+            }
+        );
 
         // named unique key
         let qstring = "CREATE TABLE users (id bigint(20), name varchar(255), email varchar(255), \
                        UNIQUE KEY id_k (id));";
 
         let res = creation(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   CreateTableStatement {
-                       table: Table::from("users"),
-                       fields: vec![ColumnSpecification::new(Column::from("id"),
-                                                             SqlType::Bigint(20)),
-                                    ColumnSpecification::new(Column::from("name"),
-                                                             SqlType::Varchar(255)),
-                                    ColumnSpecification::new(Column::from("email"),
-                                                             SqlType::Varchar(255))],
-                       keys: Some(vec![TableKey::UniqueKey(Some(String::from("id_k")),
-                                                           vec![Column::from("id")])]),
-                       ..Default::default()
-                   });
+        assert_eq!(
+            res.unwrap().1,
+            CreateTableStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20)),
+                    ColumnSpecification::new(Column::from("name"), SqlType::Varchar(255)),
+                    ColumnSpecification::new(Column::from("email"), SqlType::Varchar(255)),
+                ],
+                keys: Some(vec![
+                    TableKey::UniqueKey(Some(String::from("id_k")), vec![Column::from("id")]),
+                ]),
+                ..Default::default()
+            }
+        );
     }
+
+    #[test]
+    fn django_create() {
+        let qstring = "CREATE TABLE `django_admin_log` (
+                       `id` integer AUTO_INCREMENT NOT NULL PRIMARY KEY,
+                       `action_time` datetime NOT NULL,
+                       `user_id` integer NOT NULL,
+                       `content_type_id` integer,
+                       `object_id` longtext,
+                       `object_repr` varchar(200) NOT NULL,
+                       `action_flag` smallint UNSIGNED NOT NULL,
+                       `change_message` longtext NOT NULL);";
+        let res = creation(qstring.as_bytes());
+        assert_eq!(
+            res.unwrap().1,
+            CreateTableStatement {
+                table: Table::from("django_admin_log"),
+                fields: vec![
+                    ColumnSpecification::with_constraints(
+                        Column::from("id"),
+                        SqlType::Int(32),
+                        vec![
+                            ColumnConstraint::AutoIncrement,
+                            ColumnConstraint::NotNull,
+                            ColumnConstraint::PrimaryKey,
+                        ],
+                    ),
+                    ColumnSpecification::with_constraints(
+                        Column::from("action_time"),
+                        SqlType::DateTime,
+                        vec![ColumnConstraint::NotNull],
+                    ),
+                    ColumnSpecification::with_constraints(
+                        Column::from("user_id"),
+                        SqlType::Int(32),
+                        vec![ColumnConstraint::NotNull],
+                    ),
+                    ColumnSpecification::new(Column::from("content_type_id"), SqlType::Int(32)),
+                    ColumnSpecification::new(Column::from("object_id"), SqlType::Longtext),
+                    ColumnSpecification::with_constraints(
+                        Column::from("object_repr"),
+                        SqlType::Varchar(200),
+                        vec![ColumnConstraint::NotNull],
+                    ),
+                    ColumnSpecification::with_constraints(
+                        Column::from("action_flag"),
+                        SqlType::Int(32),
+                        vec![ColumnConstraint::NotNull],
+                    ),
+                    ColumnSpecification::with_constraints(
+                        Column::from("change_message"),
+                        SqlType::Longtext,
+                        vec![ColumnConstraint::NotNull],
+                    ),
+                ],
+                ..Default::default()
+            }
+        );
+
+        let qstring = "CREATE TABLE `auth_group` (
+                       `id` integer AUTO_INCREMENT NOT NULL PRIMARY KEY,
+                       `name` varchar(80) NOT NULL UNIQUE)";
+        let res = creation(qstring.as_bytes());
+        assert_eq!(
+            res.unwrap().1,
+            CreateTableStatement {
+                table: Table::from("auth_group"),
+                fields: vec![
+                    ColumnSpecification::with_constraints(
+                        Column::from("id"),
+                        SqlType::Int(32),
+                        vec![
+                            ColumnConstraint::AutoIncrement,
+                            ColumnConstraint::NotNull,
+                            ColumnConstraint::PrimaryKey,
+                        ],
+                    ),
+                    ColumnSpecification::with_constraints(
+                        Column::from("name"),
+                        SqlType::Varchar(80),
+                        vec![ColumnConstraint::NotNull, ColumnConstraint::Unique],
+                    ),
+                ],
+                ..Default::default()
+            }
+        );
+    }
+
 }

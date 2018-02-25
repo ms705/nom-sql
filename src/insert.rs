@@ -1,8 +1,9 @@
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
 use std::str;
+use std::fmt;
 
-use common::{field_list, statement_terminator, table_reference, value_list, Literal};
+use common::{field_list, opt_multispace, statement_terminator, table_reference, value_list,
+             Literal};
 use column::Column;
 use table::Table;
 
@@ -12,33 +13,57 @@ pub struct InsertStatement {
     pub fields: Vec<(Column, Literal)>,
 }
 
+impl fmt::Display for InsertStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "INSERT INTO {}", self.table)?;
+        write!(
+            f,
+            " ({})",
+            self.fields
+                .iter()
+                .map(|&(ref col, _)| col.name.to_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        write!(
+            f,
+            " VALUES ({})",
+            self.fields
+                .iter()
+                .map(|&(_, ref literal)| literal.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
 /// Parse rule for a SQL insert query.
 /// TODO(malte): support REPLACE, multiple parens expr, nested selection, DEFAULT VALUES
 named!(pub insertion<&[u8], InsertStatement>,
-    complete!(chain!(
-        caseless_tag!("insert") ~
-        multispace ~
-        caseless_tag!("into") ~
-        multispace ~
-        table: table_reference ~
-        multispace ~
-        fields: opt!(chain!(
-                tag!("(") ~
-                multispace? ~
-                fields: field_list ~
-                multispace? ~
-                tag!(")") ~
-                multispace,
-                || { fields }
+    complete!(do_parse!(
+        tag_no_case!("insert") >>
+        multispace >>
+        tag_no_case!("into") >>
+        multispace >>
+        table: table_reference >>
+        opt_multispace >>
+        fields: opt!(do_parse!(
+                tag!("(") >>
+                opt_multispace >>
+                fields: field_list >>
+                opt_multispace >>
+                tag!(")") >>
+                multispace >>
+                (fields)
                 )
-            ) ~
-        caseless_tag!("values") ~
-        multispace ~
-        tag!("(") ~
-        values: value_list ~
-        tag!(")") ~
-        statement_terminator,
-        || {
+            ) >>
+        tag_no_case!("values") >>
+        opt_multispace >>
+        tag!("(") >>
+        values: value_list >>
+        tag!(")") >>
+        statement_terminator >>
+        ({
             // "table AS alias" isn't legal in INSERT statements
             assert!(table.alias.is_none());
             InsertStatement {
@@ -58,7 +83,7 @@ named!(pub insertion<&[u8], InsertStatement>,
                               .collect(),
                 },
             }
-        }
+        })
     ))
 );
 
@@ -73,13 +98,17 @@ mod tests {
         let qstring = "INSERT INTO users VALUES (42, \"test\");";
 
         let res = insertion(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   InsertStatement {
-                       table: Table::from("users"),
-                       fields: vec![(Column::from("0"), 42.into()),
-                                    (Column::from("1"), "test".into())],
-                       ..Default::default()
-                   });
+        assert_eq!(
+            res.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    (Column::from("0"), 42.into()),
+                    (Column::from("1"), "test".into()),
+                ],
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -87,15 +116,19 @@ mod tests {
         let qstring = "INSERT INTO users VALUES (42, 'test', \"test\", CURRENT_TIMESTAMP);";
 
         let res = insertion(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   InsertStatement {
-                       table: Table::from("users"),
-                       fields: vec![(Column::from("0"), 42.into()),
-                                    (Column::from("1"), "test".into()),
-                                    (Column::from("2"), "test".into()),
-                                    (Column::from("3"), Literal::CurrentTimestamp)],
-                       ..Default::default()
-                   });
+        assert_eq!(
+            res.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    (Column::from("0"), 42.into()),
+                    (Column::from("1"), "test".into()),
+                    (Column::from("2"), "test".into()),
+                    (Column::from("3"), Literal::CurrentTimestamp),
+                ],
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -103,12 +136,35 @@ mod tests {
         let qstring = "INSERT INTO users (id, name) VALUES (42, \"test\");";
 
         let res = insertion(qstring.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   InsertStatement {
-                       table: Table::from("users"),
-                       fields: vec![(Column::from("id"), 42.into()),
-                                    (Column::from("name"), "test".into())],
-                       ..Default::default()
-                   });
+        assert_eq!(
+            res.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    (Column::from("id"), 42.into()),
+                    (Column::from("name"), "test".into()),
+                ],
+                ..Default::default()
+            }
+        );
+    }
+
+    // Issue #3
+    #[test]
+    fn insert_without_spaces() {
+        let qstring = "INSERT INTO users(id, name) VALUES(42, \"test\");";
+
+        let res = insertion(qstring.as_bytes());
+        assert_eq!(
+            res.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    (Column::from("id"), 42.into()),
+                    (Column::from("name"), "test".into()),
+                ],
+                ..Default::default()
+            }
+        );
     }
 }

@@ -49,25 +49,35 @@ pub struct Column {
     pub function: Option<Box<FunctionExpression>>,
 }
 
+impl fmt::Display for Column {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref table) = self.table {
+            write!(f, "{}.{}", table, self.name)?;
+        } else {
+            write!(f, "{}", self.name)?;
+        }
+        if let Some(ref alias) = self.alias {
+            write!(f, " AS {}", alias)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a str> for Column {
     fn from(c: &str) -> Column {
         match c.find(".") {
-            None => {
-                Column {
-                    name: String::from(c),
-                    alias: None,
-                    table: None,
-                    function: None,
-                }
-            }
-            Some(i) => {
-                Column {
-                    name: String::from(&c[i + 1..]),
-                    alias: None,
-                    table: Some(String::from(&c[0..i])),
-                    function: None,
-                }
-            }
+            None => Column {
+                name: String::from(c),
+                alias: None,
+                table: None,
+                function: None,
+            },
+            Some(i) => Column {
+                name: String::from(&c[i + 1..]),
+                alias: None,
+                table: Some(String::from(&c[0..i])),
+                function: None,
+            },
         }
     }
 }
@@ -105,6 +115,22 @@ pub enum ColumnConstraint {
     NotNull,
     DefaultValue(Literal),
     AutoIncrement,
+    PrimaryKey,
+    Unique,
+}
+
+impl fmt::Display for ColumnConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ColumnConstraint::NotNull => write!(f, "NOT NULL"),
+            ColumnConstraint::DefaultValue(ref literal) => {
+                write!(f, "DEFAULT {}", literal.to_string())
+            }
+            ColumnConstraint::AutoIncrement => write!(f, "AUTOINCREMENT"),
+            ColumnConstraint::PrimaryKey => write!(f, "PRIMARY KEY"),
+            ColumnConstraint::Unique => write!(f, "UNIQUE"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -112,6 +138,16 @@ pub struct ColumnSpecification {
     pub column: Column,
     pub sql_type: SqlType,
     pub constraints: Vec<ColumnConstraint>,
+}
+
+impl fmt::Display for ColumnSpecification {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.column, self.sql_type)?;
+        for constraint in self.constraints.iter() {
+            write!(f, " {}", constraint)?;
+        }
+        Ok(())
+    }
 }
 
 impl ColumnSpecification {
@@ -123,10 +159,11 @@ impl ColumnSpecification {
         }
     }
 
-    pub fn with_constraints(c: Column,
-                            t: SqlType,
-                            ccs: Vec<ColumnConstraint>)
-                            -> ColumnSpecification {
+    pub fn with_constraints(
+        c: Column,
+        t: SqlType,
+        ccs: Vec<ColumnConstraint>,
+    ) -> ColumnSpecification {
         ColumnSpecification {
             column: c,
             sql_type: t,
@@ -144,12 +181,14 @@ mod tests {
         let s = "table.col";
         let c = Column::from(s);
 
-        assert_eq!(c,
-                   Column {
-                       name: String::from("col"),
-                       alias: None,
-                       table: Some(String::from("table")),
-                       function: None,
-                   });
+        assert_eq!(
+            c,
+            Column {
+                name: String::from("col"),
+                alias: None,
+                table: Some(String::from("table")),
+                function: None,
+            }
+        );
     }
 }

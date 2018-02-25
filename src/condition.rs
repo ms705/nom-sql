@@ -1,17 +1,31 @@
 use nom::multispace;
-use nom::{IResult, Err, ErrorKind, Needed};
 use std::collections::{HashSet, VecDeque};
 use std::str;
+use std::fmt;
 
 use column::Column;
-use common::{binary_comparison_operator, column_identifier, integer_literal, string_literal,
-             Literal, Operator};
+use common::{binary_comparison_operator, column_identifier, integer_literal, opt_multispace,
+             string_literal, Literal, Operator};
+
+use select::{nested_selection, SelectStatement};
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ConditionBase {
     Field(Column),
     Literal(Literal),
     Placeholder,
+    NestedSelect(Box<SelectStatement>),
+}
+
+impl fmt::Display for ConditionBase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ConditionBase::Field(ref col) => write!(f, "{}", col),
+            ConditionBase::Literal(ref literal) => write!(f, "{}", literal.to_string()),
+            ConditionBase::Placeholder => write!(f, "?"),
+            ConditionBase::NestedSelect(ref select) => write!(f, "{}", select),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Serialize, Deserialize)]
@@ -31,20 +45,28 @@ impl<'a> ConditionTree {
                 ConditionExpression::Base(ConditionBase::Field(ref c)) => {
                     s.insert(c);
                 }
-                ConditionExpression::LogicalOp(ref ct) |
-                ConditionExpression::ComparisonOp(ref ct) => q.push_back(ct),
+                ConditionExpression::LogicalOp(ref ct)
+                | ConditionExpression::ComparisonOp(ref ct) => q.push_back(ct),
                 _ => (),
             }
             match *ct.right.as_ref() {
                 ConditionExpression::Base(ConditionBase::Field(ref c)) => {
                     s.insert(c);
                 }
-                ConditionExpression::LogicalOp(ref ct) |
-                ConditionExpression::ComparisonOp(ref ct) => q.push_back(ct),
+                ConditionExpression::LogicalOp(ref ct)
+                | ConditionExpression::ComparisonOp(ref ct) => q.push_back(ct),
                 _ => (),
             }
         }
         s
+    }
+}
+
+impl fmt::Display for ConditionTree {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.left)?;
+        write!(f, " {} ", self.operator)?;
+        write!(f, "{}", self.right)
     }
 }
 
@@ -56,116 +78,121 @@ pub enum ConditionExpression {
     Base(ConditionBase),
 }
 
+impl fmt::Display for ConditionExpression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ConditionExpression::ComparisonOp(ref tree) => write!(f, "{}", tree),
+            ConditionExpression::LogicalOp(ref tree) => write!(f, "{}", tree),
+            ConditionExpression::NegationOp(ref expr) => write!(f, "NOT {}", expr),
+            ConditionExpression::Base(ref base) => write!(f, "{}", base),
+        }
+    }
+}
+
 /// Parse a conditional expression into a condition tree structure
 named!(pub condition_expr<&[u8], ConditionExpression>,
        alt_complete!(
-           chain!(
-               left: and_expr ~
-               caseless_tag!("or") ~
-               multispace ~
-               right: condition_expr,
-               || {
-                   ConditionExpression::LogicalOp(
-                       ConditionTree {
-                           operator: Operator::Or,
-                           left: Box::new(left),
-                           right: Box::new(right),
-                       }
-                   )
-               }
+           do_parse!(
+               left: and_expr >>
+               opt_multispace >>
+               tag_no_case!("or") >>
+               multispace >>
+               right: condition_expr >>
+               (ConditionExpression::LogicalOp(
+                   ConditionTree {
+                       operator: Operator::Or,
+                       left: Box::new(left),
+                       right: Box::new(right),
+                   }
+               ))
            )
        |   and_expr)
 );
 
 named!(pub and_expr<&[u8], ConditionExpression>,
        alt_complete!(
-           chain!(
-               left: parenthetical_expr ~
-               caseless_tag!("and") ~
-               multispace ~
-               right: and_expr,
-               || {
-                   ConditionExpression::LogicalOp(
-                       ConditionTree {
-                           operator: Operator::And,
-                           left: Box::new(left),
-                           right: Box::new(right),
-                       }
-                   )
-               }
+           do_parse!(
+               left: parenthetical_expr >>
+               opt_multispace >>
+               tag_no_case!("and") >>
+               multispace >>
+               right: and_expr >>
+               (ConditionExpression::LogicalOp(
+                   ConditionTree {
+                       operator: Operator::And,
+                       left: Box::new(left),
+                       right: Box::new(right),
+                   }
+               ))
            )
        |   parenthetical_expr)
 );
 
 named!(pub parenthetical_expr<&[u8], ConditionExpression>,
        alt_complete!(
-           delimited!(tag!("("), condition_expr, chain!(tag!(")") ~ multispace?, ||{}))
+           delimited!(
+               do_parse!(tag!("(") >> opt_multispace >> ()),
+               condition_expr,
+               do_parse!(opt_multispace >> tag!(")") >> opt_multispace >> ())
+            )
        |   not_expr)
 );
 
 named!(pub not_expr<&[u8], ConditionExpression>,
        alt_complete!(
-           chain!(
-               caseless_tag!("not") ~
-               multispace ~
-               right: parenthetical_expr,
-               || {
-                   ConditionExpression::NegationOp(Box::new(right))
-               }
+           do_parse!(
+               tag_no_case!("not") >>
+               multispace >>
+               right: parenthetical_expr >>
+               (ConditionExpression::NegationOp(Box::new(right)))
            )
        |   boolean_primary)
 );
 
 named!(boolean_primary<&[u8], ConditionExpression>,
-    chain!(
-        left: predicate ~
-        multispace? ~
-        op: binary_comparison_operator ~
-        multispace? ~
-        right: predicate,
-        || {
-            ConditionExpression::ComparisonOp(
-                ConditionTree {
-                    operator: op,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                }
-            )
-
-        }
+    do_parse!(
+        left: predicate >>
+        opt_multispace >>
+        op: binary_comparison_operator >>
+        opt_multispace >>
+        right: predicate >>
+        (ConditionExpression::ComparisonOp(
+            ConditionTree {
+                operator: op,
+                left: Box::new(left),
+                right: Box::new(right),
+            }
+        ))
     )
 );
 
-
 named!(predicate<&[u8], ConditionExpression>,
     alt_complete!(
-            chain!(
-                delimited!(opt!(multispace), tag!("?"), opt!(multispace)),
-                || {
-                    ConditionExpression::Base(
-                        ConditionBase::Placeholder
-                    )
-                }
+            do_parse!(
+                tag!("?") >>
+                (ConditionExpression::Base(
+                    ConditionBase::Placeholder
+                ))
             )
-        |   chain!(
-                field: integer_literal,
-                || {
-                    ConditionExpression::Base(ConditionBase::Literal(field))
-                }
+        |   do_parse!(
+                field: integer_literal >>
+                (ConditionExpression::Base(ConditionBase::Literal(field)))
             )
-        |   chain!(
-                field: string_literal,
-                || {
-                    ConditionExpression::Base(ConditionBase::Literal(field))
-                }
+        |   do_parse!(
+                field: string_literal >>
+                (ConditionExpression::Base(ConditionBase::Literal(field)))
             )
-        |   chain!(
-                field: delimited!(opt!(multispace), column_identifier, opt!(multispace)),
-                || {
-                    ConditionExpression::Base(
-                        ConditionBase::Field(field)
-                    )
-                }
+        |   do_parse!(
+                field: column_identifier >>
+                (ConditionExpression::Base(
+                    ConditionBase::Field(field)
+                ))
+            )
+        |   do_parse!(
+                select: delimited!(tag!("("), nested_selection, tag!(")")) >>
+                (ConditionExpression::Base(
+                    ConditionBase::NestedSelect(Box::new(select))
+                ))
             )
     )
 );
@@ -174,17 +201,24 @@ named!(predicate<&[u8], ConditionExpression>,
 mod tests {
     use super::*;
     use column::Column;
-    use common::{Literal, Operator};
+    use common::{FieldExpression, Literal, Operator};
 
-    fn flat_condition_tree(op: Operator,
-                           l: ConditionBase,
-                           r: ConditionBase)
-                           -> ConditionExpression {
+    fn columns(cols: &[&str]) -> Vec<FieldExpression> {
+        cols.iter()
+            .map(|c| FieldExpression::Col(Column::from(*c)))
+            .collect()
+    }
+
+    fn flat_condition_tree(
+        op: Operator,
+        l: ConditionBase,
+        r: ConditionBase,
+    ) -> ConditionExpression {
         ConditionExpression::ComparisonOp(ConditionTree {
-                                              operator: op,
-                                              left: Box::new(ConditionExpression::Base(l)),
-                                              right: Box::new(ConditionExpression::Base(r)),
-                                          })
+            operator: op,
+            left: Box::new(ConditionExpression::Base(l)),
+            right: Box::new(ConditionExpression::Base(r)),
+        })
     }
 
     #[test]
@@ -212,10 +246,14 @@ mod tests {
         let cond = "foo = ?";
 
         let res = condition_expr(cond.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   flat_condition_tree(Operator::Equal,
-                                       ConditionBase::Field(Column::from("foo")),
-                                       ConditionBase::Placeholder));
+        assert_eq!(
+            res.unwrap().1,
+            flat_condition_tree(
+                Operator::Equal,
+                ConditionBase::Field(Column::from("foo")),
+                ConditionBase::Placeholder
+            )
+        );
     }
 
     #[test]
@@ -224,16 +262,24 @@ mod tests {
         let cond2 = "foo = \"hello\"";
 
         let res1 = condition_expr(cond1.as_bytes());
-        assert_eq!(res1.unwrap().1,
-                   flat_condition_tree(Operator::Equal,
-                                       ConditionBase::Field(Column::from("foo")),
-                                       ConditionBase::Literal(Literal::Integer(42 as i64))));
+        assert_eq!(
+            res1.unwrap().1,
+            flat_condition_tree(
+                Operator::Equal,
+                ConditionBase::Field(Column::from("foo")),
+                ConditionBase::Literal(Literal::Integer(42 as i64))
+            )
+        );
 
         let res2 = condition_expr(cond2.as_bytes());
-        assert_eq!(res2.unwrap().1,
-                   flat_condition_tree(Operator::Equal,
-                                       ConditionBase::Field(Column::from("foo")),
-                                       ConditionBase::Literal(Literal::String(String::from("hello")))));
+        assert_eq!(
+            res2.unwrap().1,
+            flat_condition_tree(
+                Operator::Equal,
+                ConditionBase::Field(Column::from("foo")),
+                ConditionBase::Literal(Literal::String(String::from("hello")))
+            )
+        );
     }
 
     #[test]
@@ -242,16 +288,24 @@ mod tests {
         let cond2 = "foo <= 5";
 
         let res1 = condition_expr(cond1.as_bytes());
-        assert_eq!(res1.unwrap().1,
-                   flat_condition_tree(Operator::GreaterOrEqual,
-                                       ConditionBase::Field(Column::from("foo")),
-                                       ConditionBase::Literal(Literal::Integer(42 as i64))));
+        assert_eq!(
+            res1.unwrap().1,
+            flat_condition_tree(
+                Operator::GreaterOrEqual,
+                ConditionBase::Field(Column::from("foo")),
+                ConditionBase::Literal(Literal::Integer(42 as i64))
+            )
+        );
 
         let res2 = condition_expr(cond2.as_bytes());
-        assert_eq!(res2.unwrap().1,
-                   flat_condition_tree(Operator::LessOrEqual,
-                                       ConditionBase::Field(Column::from("foo")),
-                                       ConditionBase::Literal(Literal::Integer(5 as i64))));
+        assert_eq!(
+            res2.unwrap().1,
+            flat_condition_tree(
+                Operator::LessOrEqual,
+                ConditionBase::Field(Column::from("foo")),
+                ConditionBase::Literal(Literal::Integer(5 as i64))
+            )
+        );
     }
 
     #[test]
@@ -259,10 +313,14 @@ mod tests {
         let cond = "foo = ''";
 
         let res = condition_expr(cond.as_bytes());
-        assert_eq!(res.unwrap().1,
-                   flat_condition_tree(Operator::Equal,
-                                       ConditionBase::Field(Column::from("foo")),
-                                       ConditionBase::Literal(Literal::String(String::from("")))));
+        assert_eq!(
+            res.unwrap().1,
+            flat_condition_tree(
+                Operator::Equal,
+                ConditionBase::Field(Column::from("foo")),
+                ConditionBase::Literal(Literal::String(String::from("")))
+            )
+        );
     }
 
     #[test]
@@ -274,35 +332,34 @@ mod tests {
         use common::Literal;
 
         let a = ComparisonOp(ConditionTree {
-                                 operator: Operator::Equal,
-                                 left: Box::new(Base(Field("foo".into()))),
-                                 right: Box::new(Base(Placeholder)),
-                             });
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("foo".into()))),
+            right: Box::new(Base(Placeholder)),
+        });
 
         let b = ComparisonOp(ConditionTree {
-                                 operator: Operator::Equal,
-                                 left: Box::new(Base(Field("bar".into()))),
-                                 right: Box::new(Base(Literal(Literal::Integer(12.into())))),
-                             });
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("bar".into()))),
+            right: Box::new(Base(Literal(Literal::Integer(12.into())))),
+        });
 
         let left = LogicalOp(ConditionTree {
-                                 operator: Operator::Or,
-                                 left: Box::new(a),
-                                 right: Box::new(b),
-                             });
+            operator: Operator::Or,
+            left: Box::new(a),
+            right: Box::new(b),
+        });
 
         let right = ComparisonOp(ConditionTree {
-                                     operator: Operator::Equal,
-                                     left: Box::new(Base(Field("foobar".into()))),
-                                     right:
-                                         Box::new(Base(Literal(Literal::String("a".into())))),
-                                 });
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("foobar".into()))),
+            right: Box::new(Base(Literal(Literal::String("a".into())))),
+        });
 
         let complete = LogicalOp(ConditionTree {
-                                     operator: Operator::And,
-                                     left: Box::new(left),
-                                     right: Box::new(right),
-                                 });
+            operator: Operator::And,
+            left: Box::new(left),
+            right: Box::new(right),
+        });
 
         let res = condition_expr(cond.as_bytes());
         assert_eq!(res.unwrap().1, complete);
@@ -317,35 +374,34 @@ mod tests {
         use common::Literal;
 
         let a = ComparisonOp(ConditionTree {
-                                 operator: Operator::Equal,
-                                 left: Box::new(Base(Field("foo".into()))),
-                                 right: Box::new(Base(Placeholder)),
-                             });
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("foo".into()))),
+            right: Box::new(Base(Placeholder)),
+        });
 
         let b = ComparisonOp(ConditionTree {
-                                 operator: Operator::Equal,
-                                 left: Box::new(Base(Field("bar".into()))),
-                                 right: Box::new(Base(Literal(Literal::Integer(12.into())))),
-                             });
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("bar".into()))),
+            right: Box::new(Base(Literal(Literal::Integer(12.into())))),
+        });
 
         let left = LogicalOp(ConditionTree {
-                                 operator: Operator::And,
-                                 left: Box::new(a),
-                                 right: Box::new(b),
-                             });
+            operator: Operator::And,
+            left: Box::new(a),
+            right: Box::new(b),
+        });
 
         let right = ComparisonOp(ConditionTree {
-                                     operator: Operator::Equal,
-                                     left: Box::new(Base(Field("foobar".into()))),
-                                     right:
-                                         Box::new(Base(Literal(Literal::String("a".into())))),
-                                 });
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("foobar".into()))),
+            right: Box::new(Base(Literal(Literal::String("a".into())))),
+        });
 
         let complete = LogicalOp(ConditionTree {
-                                     operator: Operator::Or,
-                                     left: Box::new(left),
-                                     right: Box::new(right),
-                                 });
+            operator: Operator::Or,
+            left: Box::new(left),
+            right: Box::new(right),
+        });
 
         let res = condition_expr(cond.as_bytes());
         assert_eq!(res.unwrap().1, complete);
@@ -359,28 +415,86 @@ mod tests {
         use ConditionBase::*;
         use common::Literal::*;
 
-        let left =
-            NegationOp(Box::new(ComparisonOp(ConditionTree {
-                                                 operator: Operator::Equal,
-                                                 left: Box::new(Base(Field("bar".into()))),
-                                                 right:
-                                                     Box::new(Base(Literal(Integer(12.into())))),
-                                             })));
+        let left = NegationOp(Box::new(ComparisonOp(ConditionTree {
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("bar".into()))),
+            right: Box::new(Base(Literal(Integer(12.into())))),
+        })));
 
         let right = ComparisonOp(ConditionTree {
-                                     operator: Operator::Equal,
-                                     left: Box::new(Base(Field("foobar".into()))),
-                                     right: Box::new(Base(Literal(String("a".into())))),
-                                 });
+            operator: Operator::Equal,
+            left: Box::new(Base(Field("foobar".into()))),
+            right: Box::new(Base(Literal(String("a".into())))),
+        });
 
         let complete = LogicalOp(ConditionTree {
-                                     operator: Operator::Or,
-                                     left: Box::new(left),
-                                     right: Box::new(right),
-                                 });
+            operator: Operator::Or,
+            left: Box::new(left),
+            right: Box::new(right),
+        });
 
         let res = condition_expr(cond.as_bytes());
         assert_eq!(res.unwrap().1, complete);
+    }
+
+    #[test]
+    fn nested_select() {
+        use select::SelectStatement;
+        use table::Table;
+        use ConditionBase::*;
+        use std::default::Default;
+
+        let cond = "bar in (select col from foo)";
+
+        let res = condition_expr(cond.as_bytes());
+
+        let nested_select = Box::new(SelectStatement {
+            tables: vec![Table::from("foo")],
+            fields: columns(&["col"]),
+            ..Default::default()
+        });
+
+        let expected = flat_condition_tree(
+            Operator::In,
+            Field("bar".into()),
+            NestedSelect(nested_select),
+        );
+
+        assert_eq!(res.unwrap().1, expected);
+    }
+
+    #[test]
+    fn and_with_nested_select() {
+        use select::SelectStatement;
+        use table::Table;
+        use ConditionBase::*;
+        use std::default::Default;
+
+        let cond = "paperId in (select paperId from PaperConflict) and size > 0";
+
+        let res = condition_expr(cond.as_bytes());
+
+        let nested_select = Box::new(SelectStatement {
+            tables: vec![Table::from("PaperConflict")],
+            fields: columns(&["paperId"]),
+            ..Default::default()
+        });
+
+        let left = flat_condition_tree(
+            Operator::In,
+            Field("paperId".into()),
+            NestedSelect(nested_select),
+        );
+
+        let right = flat_condition_tree(Operator::Greater, Field("size".into()), Literal(0.into()));
+
+        let expected = ConditionExpression::LogicalOp(ConditionTree {
+            left: Box::new(left),
+            right: Box::new(right),
+            operator: Operator::And,
+        });
+
+        assert_eq!(res.unwrap().1, expected);
     }
 
 }

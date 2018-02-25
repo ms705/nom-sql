@@ -39,11 +39,13 @@ fn test_queries_from_file(f: &Path, name: &str) -> Result<i32, i32> {
     f.read_to_string(&mut s).unwrap();
     let lines: Vec<String> = s.lines()
         .filter(|l| !l.is_empty() && !l.starts_with("#"))
-        .map(|l| if !(l.ends_with("\n") || l.ends_with(";")) {
-                 String::from(l) + "\n"
-             } else {
-                 String::from(l)
-             })
+        .map(|l| {
+            if !(l.ends_with("\n") || l.ends_with(";")) {
+                String::from(l) + "\n"
+            } else {
+                String::from(l)
+            }
+        })
         .collect();
     println!("Loaded {} {} queries", lines.len(), name);
 
@@ -95,9 +97,8 @@ fn hotcrp_schema() {
     let lines: Vec<&str> = s.lines()
         .map(str::trim)
         .filter(|l| {
-                    !l.is_empty() && !l.starts_with("#") && !l.starts_with("--") &&
-                    !l.starts_with("DROP")
-                })
+            !l.is_empty() && !l.starts_with("#") && !l.starts_with("--") && !l.starts_with("DROP")
+        })
         .collect();
     let mut q = String::new();
     let mut queries = Vec::new();
@@ -136,9 +137,8 @@ fn mediawiki_schema() {
     let lines: Vec<&str> = s.lines()
         .map(str::trim)
         .filter(|l| {
-                    !l.is_empty() && !l.starts_with("#") && !l.starts_with("--") &&
-                    !l.starts_with("DROP")
-                })
+            !l.is_empty() && !l.starts_with("#") && !l.starts_with("--") && !l.starts_with("DROP")
+        })
         .collect();
     let mut q = String::new();
     let mut queries = Vec::new();

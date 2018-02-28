@@ -201,11 +201,11 @@ named!(predicate<&[u8], ConditionExpression>,
 mod tests {
     use super::*;
     use column::Column;
-    use common::{FieldExpression, Literal, Operator};
+    use common::{Field, FieldExpression, Literal, Operator};
 
     fn columns(cols: &[&str]) -> Vec<FieldExpression> {
         cols.iter()
-            .map(|c| FieldExpression::Col(Column::from(*c)))
+            .map(|c| FieldExpression::new(Field::Col(Column::from(*c)), None))
             .collect()
     }
 

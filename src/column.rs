@@ -44,7 +44,6 @@ impl Display for FunctionExpression {
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
-    pub alias: Option<String>,
     pub table: Option<String>,
     pub function: Option<Box<FunctionExpression>>,
 }
@@ -56,9 +55,6 @@ impl fmt::Display for Column {
         } else {
             write!(f, "{}", self.name)?;
         }
-        if let Some(ref alias) = self.alias {
-            write!(f, " AS {}", alias)?;
-        }
         Ok(())
     }
 }
@@ -68,13 +64,11 @@ impl<'a> From<&'a str> for Column {
         match c.find(".") {
             None => Column {
                 name: String::from(c),
-                alias: None,
                 table: None,
                 function: None,
             },
             Some(i) => Column {
                 name: String::from(&c[i + 1..]),
-                alias: None,
                 table: Some(String::from(&c[0..i])),
                 function: None,
             },
@@ -185,7 +179,6 @@ mod tests {
             c,
             Column {
                 name: String::from("col"),
-                alias: None,
                 table: Some(String::from("table")),
                 function: None,
             }

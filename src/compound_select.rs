@@ -85,7 +85,7 @@ named!(pub compound_selection<&[u8], CompoundSelectStatement>,
 mod tests {
     use super::*;
     use column::Column;
-    use common::FieldExpression;
+    use common::{Field, FieldExpression};
     use table::Table;
 
     #[test]
@@ -98,16 +98,16 @@ mod tests {
         let first_select = SelectStatement {
             tables: vec![Table::from("Vote")],
             fields: vec![
-                FieldExpression::Col(Column::from("id")),
-                FieldExpression::Literal(1.into()),
+                FieldExpression::new(Field::Col(Column::from("id")), None),
+                FieldExpression::new(Field::Literal(1.into()), None),
             ],
             ..Default::default()
         };
         let second_select = SelectStatement {
             tables: vec![Table::from("Rating")],
             fields: vec![
-                FieldExpression::Col(Column::from("id")),
-                FieldExpression::Col(Column::from("stars")),
+                FieldExpression::new(Field::Col(Column::from("id")), None),
+                FieldExpression::new(Field::Col(Column::from("stars")), None),
             ],
             ..Default::default()
         };
@@ -134,24 +134,24 @@ mod tests {
         let first_select = SelectStatement {
             tables: vec![Table::from("Vote")],
             fields: vec![
-                FieldExpression::Col(Column::from("id")),
-                FieldExpression::Literal(1.into()),
+                FieldExpression::new(Field::Col(Column::from("id")), None),
+                FieldExpression::new(Field::Literal(1.into()), None),
             ],
             ..Default::default()
         };
         let second_select = SelectStatement {
             tables: vec![Table::from("Rating")],
             fields: vec![
-                FieldExpression::Col(Column::from("id")),
-                FieldExpression::Col(Column::from("stars")),
+                FieldExpression::new(Field::Col(Column::from("id")), None),
+                FieldExpression::new(Field::Col(Column::from("stars")), None),
             ],
             ..Default::default()
         };
         let third_select = SelectStatement {
             tables: vec![Table::from("Vote")],
             fields: vec![
-                FieldExpression::Literal(42.into()),
-                FieldExpression::Literal(5.into()),
+                FieldExpression::new(Field::Literal(42.into()), None),
+                FieldExpression::new(Field::Literal(5.into()), None),
             ],
             ..Default::default()
         };
@@ -177,16 +177,16 @@ mod tests {
         let first_select = SelectStatement {
             tables: vec![Table::from("Vote")],
             fields: vec![
-                FieldExpression::Col(Column::from("id")),
-                FieldExpression::Literal(1.into()),
+                FieldExpression::new(Field::Col(Column::from("id")), None),
+                FieldExpression::new(Field::Literal(1.into()), None),
             ],
             ..Default::default()
         };
         let second_select = SelectStatement {
             tables: vec![Table::from("Rating")],
             fields: vec![
-                FieldExpression::Col(Column::from("id")),
-                FieldExpression::Col(Column::from("stars")),
+                FieldExpression::new(Field::Col(Column::from("id")), None),
+                FieldExpression::new(Field::Col(Column::from("stars")), None),
             ],
             ..Default::default()
         };

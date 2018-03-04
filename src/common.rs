@@ -220,7 +220,7 @@ impl fmt::Display for TableKey {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
-pub enum FieldExpression {
+pub enum Field {
     All,
     AllInTable(String),
     Arithmetic(ArithmeticExpression),
@@ -228,21 +228,48 @@ pub enum FieldExpression {
     Literal(Literal),
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub struct FieldExpression {
+    pub field: Field,
+    pub alias: Option<String>,
+}
+
+impl FieldExpression {
+    pub fn new(field: Field, alias: Option<String>) -> Self {
+        Self { field, alias }
+    }
+}
+
 impl Display for FieldExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            FieldExpression::All => write!(f, "*"),
-            FieldExpression::AllInTable(ref table) => write!(f, "{}.*", table),
-            FieldExpression::Arithmetic(ref expr) => write!(f, "{}", expr),
-            FieldExpression::Col(ref col) => write!(f, "{}", col.name.as_str()),
-            FieldExpression::Literal(ref lit) => write!(f, "{}", lit.to_string()),
+        match self.field {
+            Field::All => write!(f, "*"),
+            Field::AllInTable(ref table) => write!(f, "{}.*", table),
+            Field::Arithmetic(ref expr) => write!(f, "{}", expr),
+            Field::Col(ref col) => write!(f, "{}", col.name.as_str()),
+            Field::Literal(ref lit) => write!(f, "{}", lit.to_string()),
+        }?;
+
+        if let Some(ref alias) = self.alias {
+            write!(f, " AS {}", alias)?;
         }
+
+        Ok(())
+    }
+}
+
+impl Default for Field {
+    fn default() -> Field {
+        Field::All
     }
 }
 
 impl Default for FieldExpression {
     fn default() -> FieldExpression {
-        FieldExpression::All
+        Self {
+            field: Default::default(),
+            alias: None,
+        }
     }
 }
 
@@ -481,7 +508,6 @@ named!(pub column_identifier_no_alias<&[u8], Column>,
             function: column_function >>
             (Column {
                 name: format!("{}", function),
-                alias: None,
                 table: None,
                 function: Some(Box::new(function)),
             })
@@ -490,14 +516,13 @@ named!(pub column_identifier_no_alias<&[u8], Column>,
             table: opt!(
                 do_parse!(
                     tbl_name: map_res!(sql_identifier, str::from_utf8) >>
-                    tag!(".") >>
+                    complete!(tag!(".")) >>
                     (tbl_name)
                 )
             ) >>
             column: map_res!(sql_identifier, str::from_utf8) >>
             (Column {
                 name: String::from(column),
-                alias: None,
                 table: match table {
                     None => None,
                     Some(t) => Some(String::from(t)),
@@ -513,16 +538,8 @@ named!(pub column_identifier<&[u8], Column>,
     alt_complete!(
         do_parse!(
             function: column_function >>
-            alias: opt!(as_alias) >>
             (Column {
-                name: match alias {
-                    None => format!("{}", function),
-                    Some(a) => String::from(a),
-                },
-                alias: match alias {
-                    None => None,
-                    Some(a) => Some(String::from(a)),
-                },
+                name: format!("{}", function),
                 table: None,
                 function: Some(Box::new(function)),
             })
@@ -531,18 +548,13 @@ named!(pub column_identifier<&[u8], Column>,
             table: opt!(
                 do_parse!(
                     tbl_name: map_res!(sql_identifier, str::from_utf8) >>
-                    tag!(".") >>
+                    complete!(tag!(".")) >>
                     (tbl_name)
                 )
             ) >>
             column: map_res!(sql_identifier, str::from_utf8) >>
-            alias: opt!(as_alias) >>
             (Column {
                 name: String::from(column),
-                alias: match alias {
-                    None => None,
-                    Some(a) => Some(String::from(a)),
-                },
                 table: match table {
                     None => None,
                     Some(t) => Some(String::from(t)),
@@ -668,26 +680,27 @@ named!(pub field_definition_expr<&[u8], Vec<FieldExpression>>,
                field: alt_complete!(
                    do_parse!(
                        tag!("*") >>
-                       (FieldExpression::All)
+                       (Field::All)
                    )
                  | do_parse!(
                      table: table_reference >>
                      tag!(".*") >>
-                     (FieldExpression::AllInTable(table.name.clone()))
+                     (Field::AllInTable(table.name.clone()))
                  )
                  | do_parse!(
                      expr: arithmetic_expression >>
-                     (FieldExpression::Arithmetic(expr))
+                     (Field::Arithmetic(expr))
                  )
                  | do_parse!(
                      literal: literal >>
-                     (FieldExpression::Literal(literal))
+                     (Field::Literal(literal))
                  )
                  | do_parse!(
                      column: column_identifier >>
-                     (FieldExpression::Col(column))
+                     (Field::Col(column))
                  )
                ) >>
+               alias: opt!(as_alias) >>
                opt!(
                    complete!(do_parse!(
                        opt_multispace >>
@@ -696,7 +709,13 @@ named!(pub field_definition_expr<&[u8], Vec<FieldExpression>>,
                        ()
                    ))
                ) >>
-               (field)
+               (FieldExpression {
+                   field,
+                   alias: match alias {
+                       Some(a) => Some(String::from(a)),
+                       None => None,
+                   }
+               })
            )
        )
 );
@@ -842,7 +861,6 @@ mod tests {
         let res = column_identifier(qs);
         let expected = Column {
             name: String::from("max(addr_id)"),
-            alias: None,
             table: None,
             function: Some(Box::new(FunctionExpression::Max(Column::from("addr_id")))),
         };

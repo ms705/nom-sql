@@ -423,7 +423,6 @@ named!(pub type_identifier<&[u8], SqlType>,
                tag_no_case!("datetime") >>
                opt!(delimited!(tag!("("), digit, tag!(")"))) >>
                opt_multispace >>
-
                (SqlType::DateTime)
            )
          | do_parse!(

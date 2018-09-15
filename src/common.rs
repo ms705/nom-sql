@@ -104,12 +104,6 @@ impl<'a> From<&'a str> for Literal {
     }
 }
 
-impl From<&str> for Literal {
-    fn from(s: &str) -> Self {
-        Literal::String(String::from(s))
-    }
-}
-
 impl ToString for Literal {
     fn to_string(&self) -> String {
         match *self {

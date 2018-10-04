@@ -421,10 +421,10 @@ named!(pub type_identifier<&[u8], SqlType>,
            )
          | do_parse!(
                tag_no_case!("datetime") >>
-               len: opt!(delimited!(tag!("("), digit, tag!(")"))) >>
-               (SqlType::DateTime(match len {
-                   Some(len) => len_as_u16(len),
-                   None => 32 as u16,
+               fsp: opt!(delimited!(tag!("("), digit, tag!(")"))) >>
+               (SqlType::DateTime(match fsp {
+                   Some(fsp) => len_as_u16(fsp),
+                   None => 0 as u16,
                }))
            )
          | do_parse!(

@@ -14,16 +14,16 @@ pub enum SqlType {
     Bool,
     Char(u16),
     Varchar(u16),
-    Int(u16),
-    Bigint(u16),
-    Tinyint(u16),
+    Int(u16, bool),
+    Bigint(u16, bool),
+    Tinyint(u16, bool),
     Blob,
     Longblob,
     Mediumblob,
     Tinyblob,
-    Double,
+    Double(bool),
     Float,
-    Real,
+    Real(bool),
     Tinytext,
     Mediumtext,
     Longtext,
@@ -43,16 +43,16 @@ impl fmt::Display for SqlType {
             SqlType::Bool => write!(f, "BOOL"),
             SqlType::Char(len) => write!(f, "CHAR({})", len),
             SqlType::Varchar(len) => write!(f, "VARCHAR({})", len),
-            SqlType::Int(len) => write!(f, "INT({})", len),
-            SqlType::Bigint(len) => write!(f, "BIGINT({})", len),
-            SqlType::Tinyint(len) => write!(f, "TINYINT({})", len),
+            SqlType::Int(len, signed) => write!(f, "{} INT({})", match signed { true => "SIGNED", false => "UNSIGNED", }, len),
+            SqlType::Bigint(len, signed) => write!(f, "{} BIGINT({})", match signed { true => "SIGNED", false => "UNSIGNED", }, len),
+            SqlType::Tinyint(len, signed) => write!(f, "{} TINYINT({})", match signed { true => "SIGNED", false => "UNSIGNED", }, len),
             SqlType::Blob => write!(f, "BLOB"),
             SqlType::Longblob => write!(f, "LONGBLOB"),
             SqlType::Mediumblob => write!(f, "MEDIUMBLOB"),
             SqlType::Tinyblob => write!(f, "TINYBLOB"),
-            SqlType::Double => write!(f, "DOUBLE"),
+            SqlType::Double(signed) => write!(f, "{} DOUBLE", match signed { true => "SIGNED", false => "UNSIGNED", }),
             SqlType::Float => write!(f, "FLOAT"),
-            SqlType::Real => write!(f, "REAL"),
+            SqlType::Real(signed) => write!(f, "{} REAL", match signed { true => "SIGNED", false => "UNSIGNED", }),
             SqlType::Tinytext => write!(f, "TINYTEXT"),
             SqlType::Mediumtext => write!(f, "MEDIUMTEXT"),
             SqlType::Longtext => write!(f, "LONGTEXT"),
@@ -393,21 +393,30 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                tag_no_case!("tinyint") >>
                len: opt!(delimited!(tag!("("), digit, tag!(")"))) >>
                opt_multispace >>
-               _signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
-               (SqlType::Tinyint(len.map(|l|len_as_u16(l)).unwrap_or(1)))
+               signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
+               (SqlType::Tinyint(len.map(|l|len_as_u16(l)).unwrap_or(1), match signed {
+                   Some(sign) => sign.len() == 6,
+                   None => true,
+               }))
            )
          | do_parse!(
                tag_no_case!("bigint") >>
                len: opt!(delimited!(tag!("("), digit, tag!(")"))) >>
                opt_multispace >>
-               _signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
-               (SqlType::Bigint(len.map(|l|len_as_u16(l)).unwrap_or(1)))
+               signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
+               (SqlType::Bigint(len.map(|l|len_as_u16(l)).unwrap_or(1), match signed {
+                   Some(sign) => sign.len() == 6,
+                   None => true,
+               }))
            )
          | do_parse!(
                tag_no_case!("double") >>
                opt_multispace >>
-               _signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
-               (SqlType::Double)
+               signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
+               (SqlType::Double(match signed {
+                   Some(sign) => sign.len() == 6,
+                   None => true,
+               }))
            )
          | do_parse!(
                tag_no_case!("float") >>
@@ -435,8 +444,11 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
          | do_parse!(
                tag_no_case!("real") >>
                opt_multispace >>
-               _signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
-               (SqlType::Real)
+               signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
+               (SqlType::Real(match signed {
+                   Some(sign) => sign.len() == 6,
+                   None => true,
+               }))
            )
          | do_parse!(
                tag_no_case!("text") >>
@@ -457,10 +469,13 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                alt!(tag_no_case!("integer") | tag_no_case!("int") | tag_no_case!("smallint")) >>
                len: opt!(delimited!(tag!("("), digit, tag!(")"))) >>
                opt_multispace >>
-               _signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
+               signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
                (SqlType::Int(match len {
                    Some(len) => len_as_u16(len),
                    None => 32 as u16,
+               }, match signed {
+                   Some(sign) => sign.len() == 6,
+                   None => true,
                }))
            )
          | do_parse!(
@@ -1012,7 +1027,7 @@ mod tests {
 
         assert_eq!(
             res_ok,
-            vec![SqlType::Bool, SqlType::Int(16), SqlType::DateTime(16)]
+            vec![SqlType::Bool, SqlType::Int(16, true), SqlType::DateTime(16)]
         );
 
         assert!(res_not_ok.into_iter().all(|r| r == false));

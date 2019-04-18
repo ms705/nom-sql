@@ -24,9 +24,9 @@ pub enum SqlType {
     Longblob,
     Mediumblob,
     Tinyblob,
-    Double(bool),
+    Double,
     Float,
-    Real(bool),
+    Real,
     Tinytext,
     Mediumtext,
     Longtext,
@@ -56,9 +56,9 @@ impl fmt::Display for SqlType {
             SqlType::Longblob => write!(f, "LONGBLOB"),
             SqlType::Mediumblob => write!(f, "MEDIUMBLOB"),
             SqlType::Tinyblob => write!(f, "TINYBLOB"),
-            SqlType::Double(signed) => write!(f, "{} DOUBLE", match signed { true => "SIGNED", false => "UNSIGNED", }),
+            SqlType::Double => write!(f, "DOUBLE"),
             SqlType::Float => write!(f, "FLOAT"),
-            SqlType::Real(signed) => write!(f, "{} REAL", match signed { true => "SIGNED", false => "UNSIGNED", }),
+            SqlType::Real => write!(f, "REAL"),
             SqlType::Tinytext => write!(f, "TINYTEXT"),
             SqlType::Mediumtext => write!(f, "MEDIUMTEXT"),
             SqlType::Longtext => write!(f, "LONGTEXT"),
@@ -424,11 +424,8 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
          | do_parse!(
                tag_no_case!("double") >>
                opt_multispace >>
-               signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
-               (SqlType::Double(match signed {
-                   Some(sign) => sign.len() == 6,
-                   None => true,
-               }))
+               _signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
+               (SqlType::Double)
            )
          | do_parse!(
                tag_no_case!("float") >>
@@ -456,11 +453,8 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
          | do_parse!(
                tag_no_case!("real") >>
                opt_multispace >>
-               signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
-               (SqlType::Real(match signed {
-                   Some(sign) => sign.len() == 6,
-                   None => true,
-               }))
+               _signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
+               (SqlType::Real)
            )
          | do_parse!(
                tag_no_case!("text") >>

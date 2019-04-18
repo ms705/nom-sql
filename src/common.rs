@@ -14,11 +14,11 @@ pub enum SqlType {
     Bool,
     Char(u16),
     Varchar(u16),
-    Int(u16, bool),
+    Int(u16),
     UnsignedInt(u16),
-    Bigint(u16, bool),
+    Bigint(u16),
     UnsignedBigint(u16),
-    Tinyint(u16, bool),
+    Tinyint(u16),
     UnsignedTinyint(u16),
     Blob,
     Longblob,
@@ -46,11 +46,11 @@ impl fmt::Display for SqlType {
             SqlType::Bool => write!(f, "BOOL"),
             SqlType::Char(len) => write!(f, "CHAR({})", len),
             SqlType::Varchar(len) => write!(f, "VARCHAR({})", len),
-            SqlType::Int(len, signed) => write!(f, "{} INT({})", match signed { true => "SIGNED", false => "UNSIGNED", }, len),
+            SqlType::Int(len) => write!(f, "INT({})", len),
             SqlType::UnsignedInt(len) => write!(f, "UNSIGNED INT({})", len),
-            SqlType::Bigint(len, signed) => write!(f, "{} BIGINT({})", match signed { true => "SIGNED", false => "UNSIGNED", }, len),
+            SqlType::Bigint(len) => write!(f, "BIGINT({})", len),
             SqlType::UnsignedBigint(len) => write!(f, "UNSIGNED BIGINT({})", len),
-            SqlType::Tinyint(len, signed) => write!(f, "{} TINYINT({})", match signed { true => "SIGNED", false => "UNSIGNED", }, len),
+            SqlType::Tinyint(len) => write!(f, "TINYINT({})", len),
             SqlType::UnsignedTinyint(len) => write!(f, "UNSIGNED TINYINT({})", len),
             SqlType::Blob => write!(f, "BLOB"),
             SqlType::Longblob => write!(f, "LONGBLOB"),
@@ -402,10 +402,7 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
                (match signed {
                     Some(sign) if sign.len() == 8 => SqlType::UnsignedTinyint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
-                    _ => SqlType::Tinyint(len.map(|l|len_as_u16(l)).unwrap_or(1), match signed {
-                   Some(sign) => sign.len() == 6,
-                   None => true,
-               }),
+                    _ => SqlType::Tinyint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
                })
            )
          | do_parse!(
@@ -415,10 +412,7 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
                (match signed {
                     Some(sign) if sign.len() == 8 => SqlType::UnsignedBigint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
-                    _ => SqlType::Bigint(len.map(|l|len_as_u16(l)).unwrap_or(1), match signed {
-                   Some(sign) => sign.len() == 6,
-                   None => true,
-               }),
+                    _ => SqlType::Bigint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
                })
            )
          | do_parse!(
@@ -479,9 +473,6 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                (match signed {
                    Some(sign) if sign.len() == 8 => SqlType::UnsignedInt(len.map(|l|len_as_u16(l)).unwrap_or(32)),
                    _ => SqlType::Int(len.map(|l|len_as_u16(l)).unwrap_or(32)),
-               }, match signed {
-                   Some(sign) => sign.len() == 6,
-                   None => true,
                })
            )
          | do_parse!(
@@ -1033,7 +1024,7 @@ mod tests {
 
         assert_eq!(
             res_ok,
-            vec![SqlType::Bool, SqlType::Int(16, true), SqlType::DateTime(16)]
+            vec![SqlType::Bool, SqlType::Int(16), SqlType::DateTime(16)]
         );
 
         assert!(res_not_ok.into_iter().all(|r| r == false));

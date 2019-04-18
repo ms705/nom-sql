@@ -440,13 +440,13 @@ mod tests {
         let type3 = "bigint(20) signed";
 
         let res = type_identifier(CompleteByteSlice(type0.as_bytes()));
-        assert_eq!(res.unwrap().1, SqlType::Bigint(20, true));
+        assert_eq!(res.unwrap().1, SqlType::Bigint(20));
         let res = type_identifier(CompleteByteSlice(type1.as_bytes()));
         assert_eq!(res.unwrap().1, SqlType::Varchar(255));
         let res = type_identifier(CompleteByteSlice(type2.as_bytes()));
-        assert_eq!(res.unwrap().1, SqlType::Bigint(20, false));
+        assert_eq!(res.unwrap().1, SqlType::UnsignedBigint(20));
         let res = type_identifier(CompleteByteSlice(type3.as_bytes()));
-        assert_eq!(res.unwrap().1, SqlType::Bigint(20, true));
+        assert_eq!(res.unwrap().1, SqlType::Bigint(20));
     }
 
     #[test]
@@ -459,7 +459,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             vec![
-                ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20, true)),
+                ColumnSpecification::new(Column::from("id"), SqlType::Bigint(20)),
                 ColumnSpecification::new(Column::from("name"), SqlType::Varchar(255)),
             ]
         );
@@ -475,7 +475,7 @@ mod tests {
             CreateTableStatement {
                 table: Table::from("users"),
                 fields: vec![
-                    ColumnSpecification::new(Column::from("users.id"), SqlType::Bigint(20, true)),
+                    ColumnSpecification::new(Column::from("users.id"), SqlType::Bigint(20)),
                     ColumnSpecification::new(Column::from("users.name"), SqlType::Varchar(255)),
                     ColumnSpecification::new(Column::from("users.email"), SqlType::Varchar(255)),
                 ],
@@ -493,7 +493,7 @@ mod tests {
             CreateTableStatement {
                 table: Table::from("t"),
                 fields: vec![
-                    ColumnSpecification::new(Column::from("t.x"), SqlType::Int(32, true)),
+                    ColumnSpecification::new(Column::from("t.x"), SqlType::Int(32)),
                 ],
                 ..Default::default()
             }
@@ -512,7 +512,7 @@ mod tests {
                 fields: vec![
                     ColumnSpecification::with_constraints(
                         Column::from("user_newtalk.user_id"),
-                        SqlType::Int(5, true),
+                        SqlType::Int(5),
                         vec![
                             ColumnConstraint::NotNull,
                             ColumnConstraint::DefaultValue(Literal::String(String::from("0"))),
@@ -599,7 +599,7 @@ mod tests {
             CreateTableStatement {
                 table: Table::from("users"),
                 fields: vec![
-                    ColumnSpecification::new(Column::from("users.id"), SqlType::Bigint(20, true)),
+                    ColumnSpecification::new(Column::from("users.id"), SqlType::Bigint(20)),
                     ColumnSpecification::new(Column::from("users.name"), SqlType::Varchar(255)),
                     ColumnSpecification::new(Column::from("users.email"), SqlType::Varchar(255)),
                 ],
@@ -618,7 +618,7 @@ mod tests {
             CreateTableStatement {
                 table: Table::from("users"),
                 fields: vec![
-                    ColumnSpecification::new(Column::from("users.id"), SqlType::Bigint(20, true)),
+                    ColumnSpecification::new(Column::from("users.id"), SqlType::Bigint(20)),
                     ColumnSpecification::new(Column::from("users.name"), SqlType::Varchar(255)),
                     ColumnSpecification::new(Column::from("users.email"), SqlType::Varchar(255)),
                 ],
@@ -650,7 +650,7 @@ mod tests {
                 fields: vec![
                     ColumnSpecification::with_constraints(
                         Column::from("django_admin_log.id"),
-                        SqlType::Int(32, true),
+                        SqlType::Int(32),
                         vec![
                             ColumnConstraint::AutoIncrement,
                             ColumnConstraint::NotNull,
@@ -664,12 +664,12 @@ mod tests {
                     ),
                     ColumnSpecification::with_constraints(
                         Column::from("django_admin_log.user_id"),
-                        SqlType::Int(32, true),
+                        SqlType::Int(32),
                         vec![ColumnConstraint::NotNull],
                     ),
                     ColumnSpecification::new(
                         Column::from("django_admin_log.content_type_id"),
-                        SqlType::Int(32, true),
+                        SqlType::Int(32),
                     ),
                     ColumnSpecification::new(
                         Column::from("django_admin_log.object_id"),
@@ -682,7 +682,7 @@ mod tests {
                     ),
                     ColumnSpecification::with_constraints(
                         Column::from("django_admin_log.action_flag"),
-                        SqlType::Int(32, false),
+                        SqlType::UnsignedInt(32),
                         vec![ColumnConstraint::NotNull],
                     ),
                     ColumnSpecification::with_constraints(
@@ -706,7 +706,7 @@ mod tests {
                 fields: vec![
                     ColumnSpecification::with_constraints(
                         Column::from("auth_group.id"),
-                        SqlType::Int(32, true),
+                        SqlType::Int(32),
                         vec![
                             ColumnConstraint::AutoIncrement,
                             ColumnConstraint::NotNull,
@@ -731,7 +731,7 @@ mod tests {
                        `name` varchar(80) NOT NULL UNIQUE)";
         // TODO(malte): INTEGER isn't quite reflected right here, perhaps
         let expected = "CREATE TABLE auth_group (\
-                        id SIGNED INT(32) AUTO_INCREMENT NOT NULL PRIMARY KEY, \
+                        id INT(32) AUTO_INCREMENT NOT NULL PRIMARY KEY, \
                         name VARCHAR(80) NOT NULL UNIQUE)";
         let res = creation(CompleteByteSlice(qstring.as_bytes()));
         assert_eq!(format!("{}", res.unwrap().1), expected);

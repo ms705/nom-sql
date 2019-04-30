@@ -33,6 +33,8 @@ named!(pub deletion<CompleteByteSlice, DeleteStatement>,
         cond: opt!(where_clause) >>
         statement_terminator >>
         ({
+
+
             DeleteStatement {
                 table: table,
                 where_clause: cond,
@@ -45,7 +47,7 @@ named!(pub deletion<CompleteByteSlice, DeleteStatement>,
 mod tests {
     use super::*;
     use column::Column;
-    use common::{Literal, Operator};
+    use common::{Literal, Operator,ItemPlaceholder};
     use condition::ConditionBase::*;
     use condition::ConditionExpression::*;
     use condition::ConditionTree;
@@ -91,4 +93,50 @@ mod tests {
         let res = deletion(CompleteByteSlice(qstring.as_bytes()));
         assert_eq!(format!("{}", res.unwrap().1), expected);
     }
+
+    #[test]
+    fn placeholder_dollar_delete() {
+        let qstring = "DELETE FROM users WHERE id = $8;";
+
+        let res = deletion(CompleteByteSlice(qstring.as_bytes()));
+        let expected_left = Base(Field(Column::from("id")));
+        let expected_where_cond = Some(ComparisonOp(ConditionTree {
+            left: Box::new(expected_left),
+            right: Box::new(Base(Literal(Literal::OtherPlaceholder(ItemPlaceholder::Dollar("$8".to_string()))))),
+            operator: Operator::Equal,
+        }));
+
+       assert_eq!(
+            res.unwrap().1,
+            DeleteStatement {
+                table: Table::from("users"),
+                where_clause: expected_where_cond,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn placeholder_colon_delete() {
+        let qstring = "DELETE FROM users WHERE id = :8;";
+
+        let res = deletion(CompleteByteSlice(qstring.as_bytes()));
+        let expected_left = Base(Field(Column::from("id")));
+        let expected_where_cond = Some(ComparisonOp(ConditionTree {
+            left: Box::new(expected_left),
+            right: Box::new(Base(Literal(Literal::OtherPlaceholder(ItemPlaceholder::Colon(":8".to_string()))))),
+            operator: Operator::Equal,
+        }));
+
+        assert_eq!(
+            res.unwrap().1,
+            DeleteStatement {
+                table: Table::from("users"),
+                where_clause: expected_where_cond,
+                ..Default::default()
+            }
+        );
+    }
+
+
 }

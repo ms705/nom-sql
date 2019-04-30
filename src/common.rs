@@ -85,6 +85,32 @@ pub enum Literal {
     CurrentDate,
     CurrentTimestamp,
     Placeholder,
+    OtherPlaceholder(ItemPlaceholder),
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum ItemPlaceholder{
+    Colon(String),
+    Dollar(String),
+}
+
+impl fmt::Display for ItemPlaceholder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match *self {
+                ItemPlaceholder::Colon(ref s) => write!(f, ":{}", s),
+                ItemPlaceholder::Dollar(ref s) => write!(f, "${}", s),
+            }
+    }
+}
+
+impl From<String> for ItemPlaceholder {
+    fn from(s: String) -> Self {
+        if s.starts_with(":"){
+            ItemPlaceholder::Colon(s)
+        }else{
+            ItemPlaceholder::Dollar(s)
+        }
+    }
 }
 
 impl From<i64> for Literal {
@@ -123,6 +149,7 @@ impl ToString for Literal {
             Literal::CurrentDate => "CURRENT_DATE".to_string(),
             Literal::CurrentTimestamp => "CURRENT_TIMESTAMP".to_string(),
             Literal::Placeholder => "?".to_string(),
+            Literal::OtherPlaceholder(ref n) => format!("{}", n),
         }
     }
 }
@@ -904,6 +931,22 @@ named!(pub string_literal<CompleteByteSlice, Literal>,
            )
 );
 
+named!(pub placeholder_literal<CompleteByteSlice, Literal>,
+
+     do_parse!(
+        sign: opt!(alt!(tag!("$") | tag!(":") ) ) >>
+        val: digit >>
+        ({
+           Literal::OtherPlaceholder(
+               format!("{}{}",
+                   String::from_utf8(sign.unwrap().to_vec()).unwrap(),
+                   String::from_utf8(val.to_vec()).unwrap()
+               ).into()
+           )
+        })
+    )
+);
+
 /// Any literal value.
 named!(pub literal<CompleteByteSlice, Literal>,
     alt!(
@@ -915,6 +958,7 @@ named!(pub literal<CompleteByteSlice, Literal>,
         | do_parse!(tag_no_case!("CURRENT_DATE") >> (Literal::CurrentDate))
         | do_parse!(tag_no_case!("CURRENT_TIME") >> (Literal::CurrentTime))
         | do_parse!(tag_no_case!("?") >> (Literal::Placeholder))
+        | placeholder_literal
     )
 );
 
@@ -1062,4 +1106,5 @@ mod tests {
         let expected = Literal::String(r#"a"b"#.to_string());
         assert_eq!(res, Ok((CompleteByteSlice(&b""[..]), expected)));
     }
+
 }

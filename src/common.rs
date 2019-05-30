@@ -83,7 +83,8 @@ pub struct Real {
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Literal {
     Null,
-    Integer(i64), // todo should this be a i128 then?
+    Integer(i64),
+    UnsignedInteger(u64),
     FixedPoint(Real),
     String(String),
     Blob(Vec<u8>),
@@ -96,6 +97,12 @@ pub enum Literal {
 impl From<i64> for Literal {
     fn from(i: i64) -> Self {
         Literal::Integer(i)
+    }
+}
+
+impl From<u64> for Literal {
+    fn from(i: u64) -> Self {
+        Literal::UnsignedInteger(i)
     }
 }
 
@@ -115,7 +122,7 @@ impl ToString for Literal {
     fn to_string(&self) -> String {
         match *self {
             Literal::Null => "NULL".to_string(),
-            Literal::Integer(ref i) => format!("{}", i),
+            Literal::Integer(ref i) | Literal::UnsignedInteger(ref i) => format!("{}", i),
             Literal::FixedPoint(ref f) => format!("{}.{}", f.integral, f.fractional),
             Literal::String(ref s) => format!("'{}'", s.replace('\'', "''")),
             Literal::Blob(ref bv) => format!(

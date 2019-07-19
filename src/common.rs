@@ -3,6 +3,7 @@ use nom::{alphanumeric, digit, is_alphanumeric, line_ending, multispace, IResult
 use std::fmt::{self, Display};
 use std::str;
 use std::str::FromStr;
+use std::ops::Deref;
 
 use arithmetic::{arithmetic_expression, ArithmeticExpression};
 use column::{Column, FunctionExpression};
@@ -421,7 +422,14 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                opt_multispace >>
                signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
                (match signed {
-                    Some(sign) if sign.len() == 8 => SqlType::UnsignedTinyint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
+                   Some(ref sign) => {
+                       let signedness = String::from_utf8(sign.deref().to_vec()).unwrap();
+                       if signedness.to_lowercase() == "unsigned" {
+                           SqlType::UnsignedTinyint(len.map(|l|len_as_u16(l)).unwrap_or(1))
+                       } else {
+                           SqlType::Tinyint(len.map(|l|len_as_u16(l)).unwrap_or(1))
+                       }
+                   },
                     _ => SqlType::Tinyint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
                })
            )
@@ -431,7 +439,14 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                opt_multispace >>
                signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
                (match signed {
-                    Some(sign) if sign.len() == 8 => SqlType::UnsignedBigint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
+                   Some(ref sign) => {
+                       let signedness = String::from_utf8(sign.deref().to_vec()).unwrap();
+                       if signedness.to_lowercase() == "unsigned" {
+                           SqlType::UnsignedBigint(len.map(|l|len_as_u16(l)).unwrap_or(1))
+                       } else {
+                           SqlType::Bigint(len.map(|l|len_as_u16(l)).unwrap_or(1))
+                       }
+                   },
                     _ => SqlType::Bigint(len.map(|l|len_as_u16(l)).unwrap_or(1)),
                })
            )
@@ -491,7 +506,14 @@ named!(pub type_identifier<CompleteByteSlice, SqlType>,
                opt_multispace >>
                signed: opt!(alt!(tag_no_case!("unsigned") | tag_no_case!("signed"))) >>
                (match signed {
-                   Some(sign) if sign.len() == 8 => SqlType::UnsignedInt(len.map(|l|len_as_u16(l)).unwrap_or(32)),
+                   Some(ref sign) => {
+                       let signedness = String::from_utf8(sign.deref().to_vec()).unwrap();
+                       if signedness.to_lowercase() == "unsigned" {
+                           SqlType::UnsignedInt(len.map(|l|len_as_u16(l)).unwrap_or(32))
+                       } else {
+                           SqlType::Int(len.map(|l|len_as_u16(l)).unwrap_or(32))
+                       }
+                   },
                    _ => SqlType::Int(len.map(|l|len_as_u16(l)).unwrap_or(32)),
                })
            )

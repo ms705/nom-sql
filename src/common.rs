@@ -106,6 +106,18 @@ impl From<u64> for Literal {
     }
 }
 
+impl From<i32> for Literal {
+    fn from(i: i32) -> Self {
+        Literal::Integer(i.into())
+    }
+}
+
+impl From<u32> for Literal {
+    fn from(i: u32) -> Self {
+        Literal::UnsignedInteger(i.into())
+    }
+}
+
 impl From<String> for Literal {
     fn from(s: String) -> Self {
         Literal::String(s)
@@ -122,7 +134,8 @@ impl ToString for Literal {
     fn to_string(&self) -> String {
         match *self {
             Literal::Null => "NULL".to_string(),
-            Literal::Integer(ref i) | Literal::UnsignedInteger(ref i) => format!("{}", i),
+            Literal::Integer(ref i) => format!("{}", i),
+            Literal::UnsignedInteger(ref i) => format!("{}", i),
             Literal::FixedPoint(ref f) => format!("{}.{}", f.integral, f.fractional),
             Literal::String(ref s) => format!("'{}'", s.replace('\'', "''")),
             Literal::Blob(ref bv) => format!(

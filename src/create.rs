@@ -450,7 +450,7 @@ mod tests {
         let res = type_identifier(CompleteByteSlice(type2.as_bytes()));
         assert_eq!(res.unwrap().1, SqlType::UnsignedBigint(20));
         let res = type_identifier(CompleteByteSlice(type3.as_bytes()));
-        assert_eq!(res.unwrap().1, SqlType::SignedBigint(20));
+        assert_eq!(res.unwrap().1, SqlType::Bigint(20));
     }
 
     #[test]

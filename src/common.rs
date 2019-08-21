@@ -84,8 +84,7 @@ pub struct Real {
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Literal {
     Null,
-    Integer(i64),
-    UnsignedInteger(u64),
+    Integer(i128),
     FixedPoint(Real),
     String(String),
     Blob(Vec<u8>),
@@ -95,15 +94,21 @@ pub enum Literal {
     Placeholder,
 }
 
+impl From<i128> for Literal {
+    fn from(i: i128) -> Self {
+        Literal::Integer(i)
+    }
+}
+
 impl From<i64> for Literal {
     fn from(i: i64) -> Self {
-        Literal::Integer(i)
+        Literal::Integer(i.into())
     }
 }
 
 impl From<u64> for Literal {
     fn from(i: u64) -> Self {
-        Literal::UnsignedInteger(i)
+        Literal::Integer(i.into())
     }
 }
 
@@ -115,7 +120,7 @@ impl From<i32> for Literal {
 
 impl From<u32> for Literal {
     fn from(i: u32) -> Self {
-        Literal::UnsignedInteger(i.into())
+        Literal::Integer(i.into())
     }
 }
 
@@ -136,7 +141,6 @@ impl ToString for Literal {
         match *self {
             Literal::Null => "NULL".to_string(),
             Literal::Integer(ref i) => format!("{}", i),
-            Literal::UnsignedInteger(ref i) => format!("{}", i),
             Literal::FixedPoint(ref f) => format!("{}.{}", f.integral, f.fractional),
             Literal::String(ref s) => format!("'{}'", s.replace('\'', "''")),
             Literal::Blob(ref bv) => format!(
@@ -880,7 +884,7 @@ named!(pub integer_literal<CompleteByteSlice, Literal>,
         sign: opt!(tag!("-")) >>
         val: digit >>
         ({
-            let mut intval = i64::from_str(str::from_utf8(*val).unwrap()).unwrap();
+            let mut intval = i128::from_str(str::from_utf8(*val).unwrap()).unwrap();
             if sign.is_some() {
                 intval *= -1;
             }

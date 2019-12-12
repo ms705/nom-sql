@@ -283,7 +283,7 @@ named!(pub column_constraint<CompleteByteSlice, Option<ColumnConstraint>>,
                               })
                     ))
                   | do_parse!(d: digit >> (
-                        Literal::Integer(i64::from_str(str::from_utf8(*d).unwrap()).unwrap())
+                        Literal::Integer(i128::from_str(str::from_utf8(*d).unwrap()).unwrap())
                     ))
                   | do_parse!(tag!("''") >> (Literal::String(String::from(""))))
                   | do_parse!(tag_no_case!("null") >> (Literal::Null))

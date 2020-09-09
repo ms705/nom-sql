@@ -18,6 +18,7 @@ use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::IResult;
 use order::{order_clause, OrderClause};
 use table::Table;
+use with::{with_clause, WithClause};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct GroupByClause {
@@ -86,6 +87,7 @@ pub struct SelectStatement {
     pub group_by: Option<GroupByClause>,
     pub order: Option<OrderClause>,
     pub limit: Option<LimitClause>,
+    pub with: Option<WithClause>,
 }
 
 impl fmt::Display for SelectStatement {
@@ -131,6 +133,9 @@ impl fmt::Display for SelectStatement {
         }
         if let Some(ref limit) = self.limit {
             write!(f, " {}", limit)?;
+        }
+        if let Some(ref with) = self.with {
+            write!(f, " {}", with)?;
         }
         Ok(())
     }
@@ -276,8 +281,9 @@ pub fn selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
 pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
     let (
         remaining_input,
-        (_, _, distinct, _, fields, _, tables, join, where_clause, group_by, order, limit),
+        (with, _, _, distinct, _, fields, _, tables, join, where_clause, group_by, order, limit),
     ) = tuple((
+        opt(with_clause),
         tag_no_case("select"),
         multispace1,
         opt(tag_no_case("distinct")),
@@ -302,6 +308,7 @@ pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
             group_by,
             order,
             limit,
+            with,
         },
     ))
 }

@@ -4,14 +4,14 @@ use common::{integer_literal, sql_identifier, string_literal, ws_sep_comma, ws_s
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::{map, opt};
-use nom::multi::separated_list;
+use nom::multi::separated_list0;
 use nom::sequence::tuple;
 use nom::IResult;
 
 pub fn table_options(i: &[u8]) -> IResult<&[u8], ()> {
     // TODO: make the create options accessible
     map(
-        separated_list(table_options_separator, create_option),
+        separated_list0(table_options_separator, create_option),
         |_| (),
     )(i)
 }
@@ -39,12 +39,12 @@ fn create_option(i: &[u8]) -> IResult<&[u8], ()> {
 /// Helper to parse equals-separated create option pairs.
 /// Throws away the create option and value
 pub fn create_option_equals_pair<'a, I, O1, O2, F, G>(
-    first: F,
-    second: G,
-) -> impl Fn(I) -> IResult<I, ()>
+    mut first: F,
+    mut second: G,
+) -> impl FnMut(I) -> IResult<I, ()>
 where
-    F: Fn(I) -> IResult<I, O1>,
-    G: Fn(I) -> IResult<I, O2>,
+    F: FnMut(I) -> IResult<I, O1>,
+    G: FnMut(I) -> IResult<I, O2>,
     I: nom::InputTakeAtPosition + nom::InputTake + nom::Compare<&'a str>,
     <I as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,
 {

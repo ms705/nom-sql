@@ -2,7 +2,7 @@ use nom::branch::alt;
 use nom::character::complete::{alphanumeric1, digit1, line_ending, multispace0, multispace1};
 use nom::character::is_alphanumeric;
 use nom::combinator::{map, not, peek};
-use nom::{IResult, InputLength};
+use nom::{IResult, InputLength, Parser};
 use std::fmt::{self, Display};
 use std::str;
 use std::str::FromStr;
@@ -14,7 +14,7 @@ use keywords::{escape_if_keyword, sql_keyword};
 use nom::bytes::complete::{is_not, tag, tag_no_case, take, take_until, take_while1};
 use nom::combinator::opt;
 use nom::error::{ErrorKind, ParseError};
-use nom::multi::{fold_many0, many0, many1, separated_list};
+use nom::multi::{fold_many0, many0, many1, separated_list0};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
 use table::Table;
 
@@ -371,24 +371,24 @@ fn len_as_u16(len: &[u8]) -> u16 {
 }
 
 pub(crate) fn opt_delimited<I: Clone, O1, O2, O3, E: ParseError<I>, F, G, H>(
-    first: F,
-    second: G,
-    third: H,
-) -> impl Fn(I) -> IResult<I, O2, E>
+    mut first: F,
+    mut second: G,
+    mut third: H,
+) -> impl FnMut(I) -> IResult<I, O2, E>
 where
-    F: Fn(I) -> IResult<I, O1, E>,
-    G: Fn(I) -> IResult<I, O2, E>,
-    H: Fn(I) -> IResult<I, O3, E>,
+    F: Parser<I, O1, E>,
+    G: Parser<I, O2, E>,
+    H: Parser<I, O3, E>,
 {
     move |input: I| {
-        let first_ = &first;
-        let second_ = &second;
-        let third_ = &third;
-
         let inp = input.clone();
-        match second(input) {
+        match second.parse(input) {
             Ok((i, o)) => Ok((i, o)),
-            _ => delimited(first_, second_, third_)(inp),
+            _ => {
+                let (inp, _) = first.parse(inp)?;
+                let (inp, o2) = second.parse(inp)?;
+                third.parse(inp).map(|(i, _)| (i, o2))
+            },
         }
     }
 }
@@ -695,7 +695,7 @@ pub fn column_function(i: &[u8]) -> IResult<&[u8], FunctionExpression> {
                 FunctionExpression::GroupConcat(FunctionArgument::Column(col.clone()), sep)
             },
         ),
-        map(tuple((sql_identifier, multispace0, tag("("), separated_list(tag(","), delimited(multispace0, function_argument_parser, multispace0)), tag(")"))), |tuple| {
+        map(tuple((sql_identifier, multispace0, tag("("), separated_list0(tag(","), delimited(multispace0, function_argument_parser, multispace0)), tag(")"))), |tuple| {
             let (name, _, _, arguments, _) = tuple;
             FunctionExpression::Generic(
                 str::from_utf8(name).unwrap().to_string(), 

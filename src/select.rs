@@ -528,7 +528,7 @@ mod tests {
 
         let res1 = selection(qstring1.as_bytes());
         assert_eq!(
-            res1.clone().unwrap().1,
+            res1.unwrap().1,
             SelectStatement {
                 tables: vec![Table {
                     name: String::from("PaperTag"),
@@ -549,7 +549,7 @@ mod tests {
 
         let res1 = selection(qstring1.as_bytes());
         assert_eq!(
-            res1.clone().unwrap().1,
+            res1.unwrap().1,
             SelectStatement {
                 tables: vec![Table {
                     name: String::from("PaperTag"),
@@ -571,7 +571,7 @@ mod tests {
 
         let res1 = selection(qstring1.as_bytes());
         assert_eq!(
-            res1.clone().unwrap().1,
+            res1.unwrap().1,
             SelectStatement {
                 tables: vec![Table::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
@@ -585,7 +585,7 @@ mod tests {
         );
         let res2 = selection(qstring2.as_bytes());
         assert_eq!(
-            res2.clone().unwrap().1,
+            res2.unwrap().1,
             SelectStatement {
                 tables: vec![Table::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
@@ -606,7 +606,7 @@ mod tests {
 
         let res1 = selection(qstring1.as_bytes());
         assert_eq!(
-            res1.clone().unwrap().1,
+            res1.unwrap().1,
             SelectStatement {
                 tables: vec![Table::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
@@ -620,7 +620,7 @@ mod tests {
         );
         let res2 = selection(qstring2.as_bytes());
         assert_eq!(
-            res2.clone().unwrap().1,
+            res2.unwrap().1,
             SelectStatement {
                 tables: vec![Table::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {

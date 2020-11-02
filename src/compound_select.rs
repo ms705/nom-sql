@@ -185,17 +185,17 @@ mod tests {
         assert!(&res.is_err());
         assert_eq!(
             res.unwrap_err(),
-            nom::Err::Error((");".as_bytes(), nom::error::ErrorKind::Tag))
+            nom::Err::Error(nom::error::Error::new(");".as_bytes(), nom::error::ErrorKind::Tag))
         );
         assert!(&res2.is_err());
         assert_eq!(
             res2.unwrap_err(),
-            nom::Err::Error((";".as_bytes(), nom::error::ErrorKind::Tag))
+            nom::Err::Error(nom::error::Error::new(";".as_bytes(), nom::error::ErrorKind::Tag))
         );
         assert!(&res3.is_err());
         assert_eq!(
             res3.unwrap_err(),
-            nom::Err::Error((
+            nom::Err::Error(nom::error::Error::new(
                 ") UNION (SELECT id, stars from Rating;".as_bytes(),
                 nom::error::ErrorKind::Tag
             ))

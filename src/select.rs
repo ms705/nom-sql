@@ -936,7 +936,7 @@ mod tests {
             left: Box::new(ComparisonOp(ConditionTree {
                 left: Box::new(Base(Field(Column::from("votes.story_id")))),
                 right: Box::new(Base(Literal(Literal::Null))),
-                operator: Operator::Equal,
+                operator: Operator::Is,
             })),
             right: Box::new(ComparisonOp(ConditionTree {
                 left: Box::new(Base(Field(Column::from("votes.vote")))),

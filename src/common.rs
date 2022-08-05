@@ -219,6 +219,7 @@ pub enum Operator {
     In,
     NotIn,
     Is,
+    IsNot
 }
 
 impl Display for Operator {
@@ -237,6 +238,7 @@ impl Display for Operator {
             Operator::LessOrEqual => "<=",
             Operator::In => "IN",
             Operator::NotIn => "NOT IN",
+            Operator::IsNot => "IS NOT",
             Operator::Is => "IS",
         };
         write!(f, "{}", op)

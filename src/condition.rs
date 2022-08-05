@@ -206,15 +206,13 @@ fn is_null(i: &[u8]) -> IResult<&[u8], (Operator, ConditionExpression)> {
         tag_no_case("null"),
     ))(i)?;
 
-    // XXX(malte): bit of a hack; would consumers ever need to know
-    // about "IS NULL" vs. "= NULL"?
     Ok((
         remaining_input,
         (
             if not.is_some() {
-                Operator::NotEqual
+                Operator::IsNot
             } else {
-                Operator::Equal
+                Operator::Is
             },
             ConditionExpression::Base(ConditionBase::Literal(Literal::Null)),
         ),
@@ -838,10 +836,33 @@ mod tests {
 
         let res = condition_expr(cond.as_bytes());
         let expected =
-            flat_condition_tree(Operator::Equal, Field("bar".into()), Literal(Literal::Null));
+            flat_condition_tree(Operator::Is, Field("bar".into()), Literal(Literal::Null));
         assert_eq!(res.unwrap().1, expected);
 
         let cond = "bar IS NOT NULL";
+
+        let res = condition_expr(cond.as_bytes());
+        let expected = flat_condition_tree(
+            Operator::IsNot,
+            Field("bar".into()),
+            Literal(Literal::Null),
+        );
+        assert_eq!(res.unwrap().1, expected);
+    }
+
+    #[test]
+    fn null_equality() {
+        use common::Literal;
+        use ConditionBase::*;
+
+        let cond = "bar = NULL";
+
+        let res = condition_expr(cond.as_bytes());
+        let expected =
+            flat_condition_tree(Operator::Equal, Field("bar".into()), Literal(Literal::Null));
+        assert_eq!(res.unwrap().1, expected);
+
+        let cond = "bar != NULL";
 
         let res = condition_expr(cond.as_bytes());
         let expected = flat_condition_tree(
@@ -903,7 +924,7 @@ mod tests {
                                     ConditionExpression::LogicalOp(ConditionTree {
                                         operator: Operator::And,
                                         left: Box::new(flat_condition_tree(
-                                            Operator::Equal,
+                                            Operator::Is,
                                             Field("parent_comments.user_id".into()),
                                             Literal(Literal::Null),
                                         )),
@@ -922,7 +943,7 @@ mod tests {
                                 ConditionExpression::LogicalOp(ConditionTree {
                                     operator: Operator::Or,
                                     left: Box::new(flat_condition_tree(
-                                        Operator::Equal,
+                                        Operator::Is,
                                         Field("parent_comments.id".into()),
                                         Literal(Literal::Null),
                                     )),

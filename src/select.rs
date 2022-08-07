@@ -22,7 +22,6 @@ use table::Table;
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct GroupByClause {
     pub columns: Vec<Column>,
-    pub having: Option<ConditionExpression>,
 }
 
 impl fmt::Display for GroupByClause {
@@ -37,9 +36,18 @@ impl fmt::Display for GroupByClause {
                 .collect::<Vec<_>>()
                 .join(", ")
         )?;
-        if let Some(ref having) = self.having {
-            write!(f, " HAVING {}", having)?;
-        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub struct HavingClause {
+    condition: ConditionExpression,
+}
+
+impl fmt::Display for HavingClause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "HAVING {}", self.condition)?;
         Ok(())
     }
 }
@@ -84,6 +92,7 @@ pub struct SelectStatement {
     pub join: Vec<JoinClause>,
     pub where_clause: Option<ConditionExpression>,
     pub group_by: Option<GroupByClause>,
+    pub having: Option<HavingClause>,
     pub order: Option<OrderClause>,
     pub limit: Option<LimitClause>,
 }
@@ -126,6 +135,9 @@ impl fmt::Display for SelectStatement {
         if let Some(ref group_by) = self.group_by {
             write!(f, " {}", group_by)?;
         }
+        if let Some(ref having) = self.having {
+            write!(f, " {}", having)?;
+        }
         if let Some(ref order) = self.order {
             write!(f, " {}", order)?;
         }
@@ -136,28 +148,27 @@ impl fmt::Display for SelectStatement {
     }
 }
 
-fn having_clause(i: &[u8]) -> IResult<&[u8], ConditionExpression> {
-    let (remaining_input, (_, _, _, ce)) = tuple((
+fn having_clause(i: &[u8]) -> IResult<&[u8], HavingClause> {
+    let (remaining_input, (_, _, _, condition)) = tuple((
         multispace0,
         tag_no_case("having"),
         multispace1,
         condition_expr,
     ))(i)?;
 
-    Ok((remaining_input, ce))
+    Ok((remaining_input, HavingClause{ condition }))
 }
 
 // Parse GROUP BY clause
 pub fn group_by_clause(i: &[u8]) -> IResult<&[u8], GroupByClause> {
-    let (remaining_input, (_, _, _, columns, having)) = tuple((
+    let (remaining_input, (_, _, _, columns)) = tuple((
         multispace0,
         tag_no_case("group by"),
         multispace1,
         field_list,
-        opt(having_clause),
     ))(i)?;
 
-    Ok((remaining_input, GroupByClause { columns, having }))
+    Ok((remaining_input, GroupByClause { columns }))
 }
 
 fn offset(i: &[u8]) -> IResult<&[u8], u64> {
@@ -276,7 +287,7 @@ pub fn selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
 pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
     let (
         remaining_input,
-        (_, _, distinct, _, fields, _, tables, join, where_clause, group_by, order, limit),
+        (_, _, distinct, _, fields, _, tables, join, where_clause, group_by, having, order, limit),
     ) = tuple((
         tag_no_case("select"),
         multispace1,
@@ -288,6 +299,7 @@ pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
         many0(join_clause),
         opt(where_clause),
         opt(group_by_clause),
+        opt(having_clause),
         opt(order_clause),
         opt(limit_clause),
     ))(i)?;
@@ -300,6 +312,7 @@ pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
             join,
             where_clause,
             group_by,
+            having,
             order,
             limit,
         },
@@ -783,7 +796,6 @@ mod tests {
             })],
             group_by: Some(GroupByClause {
                 columns: vec![Column::from("aid")],
-                having: None,
             }),
             ..Default::default()
         };
@@ -807,7 +819,6 @@ mod tests {
             })],
             group_by: Some(GroupByClause {
                 columns: vec![Column::from("aid")],
-                having: None,
             }),
             ..Default::default()
         };
@@ -843,7 +854,6 @@ mod tests {
             })],
             group_by: Some(GroupByClause {
                 columns: vec![Column::from("aid")],
-                having: None,
             }),
             ..Default::default()
         };
@@ -879,7 +889,6 @@ mod tests {
             })],
             group_by: Some(GroupByClause {
                 columns: vec![Column::from("aid")],
-                having: None,
             }),
             ..Default::default()
         };
@@ -916,7 +925,6 @@ mod tests {
             })],
             group_by: Some(GroupByClause {
                 columns: vec![Column::from("aid")],
-                having: None,
             }),
             ..Default::default()
         };
@@ -963,7 +971,6 @@ mod tests {
             })],
             group_by: Some(GroupByClause {
                 columns: vec![Column::from("votes.comment_id")],
-                having: None,
             }),
             ..Default::default()
         };
@@ -1408,5 +1415,56 @@ mod tests {
         };
 
         assert_eq!(res.unwrap().1, expected);
+    }
+
+    #[test]
+    fn having_select() {
+        let qstring0 = "SELECT id, name FROM users HAVING id > 0;";
+        let qstring1 = "SELECT id, name FROM users GROUP BY id HAVING id > 0;";
+
+        let res0 = selection(qstring0.as_bytes());
+        let res1 = selection(qstring1.as_bytes());
+
+        let ct = ConditionTree {
+            left: Box::new(Base(Field(Column::from("id")))),
+            right: Box::new(Base(Literal(Literal::Integer(0)))),
+            operator: Operator::Greater,
+        };
+        let condition = ConditionExpression::ComparisonOp(ct);
+
+        assert_eq!(
+            res0.unwrap().1,
+            SelectStatement {
+                tables: vec![Table::from("users")],
+                fields: columns(&["id", "name"]),
+                having: Some(HavingClause{
+                    condition: condition.clone()
+                }),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res1.unwrap().1,
+            SelectStatement {
+                tables: vec![Table::from("users")],
+                fields: columns(&["id", "name"]),
+                    group_by: Some(
+                            GroupByClause {
+                                    columns: vec![
+                                            Column {
+                                                name: "id".to_string(),
+                                                alias: None,
+                                                table: None,
+                                                function: None,
+                                            },
+                                    ],
+                                },
+                       ),
+                having: Some(HavingClause{
+                    condition
+                }),
+                ..Default::default()
+            }
+        );
     }
 }

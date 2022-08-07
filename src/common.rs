@@ -16,7 +16,9 @@ use nom::combinator::opt;
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::{fold_many0, many0, many1, separated_list0};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
+use select::join_clause;
 use table::Table;
+use JoinClause;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum SqlType {
@@ -388,7 +390,7 @@ where
                 let (inp, _) = first.parse(inp)?;
                 let (inp, o2) = second.parse(inp)?;
                 third.parse(inp).map(|(i, _)| (i, o2))
-            },
+            }
         }
     }
 }
@@ -641,7 +643,8 @@ pub fn function_argument_parser(i: &[u8]) -> IResult<&[u8], FunctionArgument> {
 // present.
 pub fn function_arguments(i: &[u8]) -> IResult<&[u8], (FunctionArgument, bool)> {
     let distinct_parser = opt(tuple((tag_no_case("distinct"), multispace1)));
-    let (remaining_input, (distinct, args)) = tuple((distinct_parser, function_argument_parser))(i)?;
+    let (remaining_input, (distinct, args)) =
+        tuple((distinct_parser, function_argument_parser))(i)?;
     Ok((remaining_input, (args, distinct.is_some())))
 }
 
@@ -695,12 +698,25 @@ pub fn column_function(i: &[u8]) -> IResult<&[u8], FunctionExpression> {
                 FunctionExpression::GroupConcat(FunctionArgument::Column(col.clone()), sep)
             },
         ),
-        map(tuple((sql_identifier, multispace0, tag("("), separated_list0(tag(","), delimited(multispace0, function_argument_parser, multispace0)), tag(")"))), |tuple| {
-            let (name, _, _, arguments, _) = tuple;
-            FunctionExpression::Generic(
-                str::from_utf8(name).unwrap().to_string(), 
-                FunctionArguments::from(arguments))
-        })
+        map(
+            tuple((
+                sql_identifier,
+                multispace0,
+                tag("("),
+                separated_list0(
+                    tag(","),
+                    delimited(multispace0, function_argument_parser, multispace0),
+                ),
+                tag(")"),
+            )),
+            |tuple| {
+                let (name, _, _, arguments, _) = tuple;
+                FunctionExpression::Generic(
+                    str::from_utf8(name).unwrap().to_string(),
+                    FunctionArguments::from(arguments),
+                )
+            },
+        ),
     ))(i)
 }
 
@@ -893,6 +909,15 @@ pub fn table_list(i: &[u8]) -> IResult<&[u8], Vec<Table>> {
     many0(terminated(schema_table_reference, opt(ws_sep_comma)))(i)
 }
 
+pub fn from_clause(i: &[u8]) -> IResult<&[u8], Vec<Table>> {
+    let (i, (_, t)) = tuple((
+        delimited(multispace0, tag_no_case("from"), multispace0),
+        many1(terminated(schema_table_reference, opt(ws_sep_comma))),
+    ))(i)?;
+
+    Ok((i, t))
+}
+
 // Integer literal value
 pub fn integer_literal(i: &[u8]) -> IResult<&[u8], Literal> {
     map(pair(opt(tag("-")), digit1), |tup| {
@@ -1018,25 +1043,44 @@ pub fn value_list(i: &[u8]) -> IResult<&[u8], Vec<Literal>> {
     many0(delimited(multispace0, literal, opt(ws_sep_comma)))(i)
 }
 
+pub fn relational_objects_clauses(i: &[u8]) -> IResult<&[u8], (Vec<Table>, Vec<JoinClause>)> {
+    match from_clause(i) {
+        Ok((i, f)) => {
+            let (i, j) = many0(join_clause)(i).unwrap_or((i, vec![]));
+
+            Ok((i, (f, j)))
+        }
+        Err(e) => {
+            if join_clause(i).is_ok() {
+                //TODO: needs a more helpful error once error handling is improved upon
+                Err(e)
+            } else {
+                Ok((i, (vec![], vec![])))
+            }
+        }
+    }
+}
+
 // Parse a reference to a named schema.table, with an optional alias
 pub fn schema_table_reference(i: &[u8]) -> IResult<&[u8], Table> {
     map(
-		tuple((
-			opt(pair(sql_identifier, tag("."))),
-			sql_identifier,
-			opt(as_alias)
-		)),
-	|tup| Table {
-        name: String::from(str::from_utf8(tup.1).unwrap()),
-        alias: match tup.2 {
-            Some(a) => Some(String::from(a)),
-            None => None,
+        tuple((
+            opt(pair(sql_identifier, tag("."))),
+            sql_identifier,
+            opt(as_alias),
+        )),
+        |tup| Table {
+            name: String::from(str::from_utf8(tup.1).unwrap()),
+            alias: match tup.2 {
+                Some(a) => Some(String::from(a)),
+                None => None,
+            },
+            schema: match tup.0 {
+                Some((schema, _)) => Some(String::from(str::from_utf8(schema).unwrap())),
+                None => None,
+            },
         },
-        schema: match tup.0 {
-            Some((schema, _)) => Some(String::from(str::from_utf8(schema).unwrap())),
-            None => None,
-        },
-    })(i)
+    )(i)
 }
 
 // Parse a reference to a named table, with an optional alias
@@ -1047,7 +1091,7 @@ pub fn table_reference(i: &[u8]) -> IResult<&[u8], Table> {
             Some(a) => Some(String::from(a)),
             None => None,
         },
-		schema: None,
+        schema: None,
     })(i)
 }
 
@@ -1137,25 +1181,31 @@ mod tests {
             name: String::from("max(addr_id)"),
             alias: None,
             table: None,
-            function: Some(Box::new(FunctionExpression::Max(
-                FunctionArgument::Column(Column::from("addr_id")),
-            ))),
+            function: Some(Box::new(FunctionExpression::Max(FunctionArgument::Column(
+                Column::from("addr_id"),
+            )))),
         };
         assert_eq!(res.unwrap().1, expected);
     }
 
     #[test]
     fn simple_generic_function() {
-        let qlist = ["coalesce(a,b,c)".as_bytes(), "coalesce (a,b,c)".as_bytes(), "coalesce(a ,b,c)".as_bytes(), "coalesce(a, b,c)".as_bytes()];
+        let qlist = [
+            "coalesce(a,b,c)".as_bytes(),
+            "coalesce (a,b,c)".as_bytes(),
+            "coalesce(a ,b,c)".as_bytes(),
+            "coalesce(a, b,c)".as_bytes(),
+        ];
         for q in qlist.iter() {
             let res = column_function(q);
-            let expected = FunctionExpression::Generic("coalesce".to_string(), 
-                FunctionArguments::from(
-                    vec!(
-                        FunctionArgument::Column(Column::from("a")),
-                        FunctionArgument::Column(Column::from("b")),
-                        FunctionArgument::Column(Column::from("c"))
-                )));
+            let expected = FunctionExpression::Generic(
+                "coalesce".to_string(),
+                FunctionArguments::from(vec![
+                    FunctionArgument::Column(Column::from("a")),
+                    FunctionArgument::Column(Column::from("b")),
+                    FunctionArgument::Column(Column::from("c")),
+                ]),
+            );
             assert_eq!(res, Ok((&b""[..], expected)));
         }
     }

@@ -128,12 +128,12 @@ mod tests {
         let join_cond = ConditionExpression::ComparisonOp(ct);
         let expected_stmt = SelectStatement {
             tables: vec![Table::from("tags")],
-            fields: vec![FieldDefinitionExpression::AllInTable("tags".into())],
             join: vec![JoinClause {
                 operator: JoinOperator::InnerJoin,
                 right: JoinRightSide::Table(Table::from("taggings")),
                 constraint: JoinConstraint::On(join_cond),
             }],
+            fields: vec![FieldDefinitionExpression::AllInTable("tags".into())],
             ..Default::default()
         };
 

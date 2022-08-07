@@ -3,17 +3,16 @@ use std::fmt;
 use std::str;
 
 use column::Column;
-use common::FieldDefinitionExpression;
 use common::{
-    as_alias, field_definition_expr, field_list, statement_terminator, table_list, table_reference,
-    unsigned_number,
+    as_alias, field_definition_expr, field_list, relational_objects_clauses, statement_terminator,
+    table_reference, unsigned_number,
 };
+use common::{table_list, FieldDefinitionExpression};
 use condition::{condition_expr, ConditionExpression};
 use join::{join_operator, JoinConstraint, JoinOperator, JoinRightSide};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::{map, opt};
-use nom::multi::many0;
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::IResult;
 use order::{order_clause, OrderClause};
@@ -78,9 +77,9 @@ impl fmt::Display for LimitClause {
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct SelectStatement {
-    pub tables: Vec<Table>,
     pub distinct: bool,
     pub fields: Vec<FieldDefinitionExpression>,
+    pub tables: Vec<Table>,
     pub join: Vec<JoinClause>,
     pub where_clause: Option<ConditionExpression>,
     pub group_by: Option<GroupByClause>,
@@ -116,9 +115,11 @@ impl fmt::Display for SelectStatement {
                     .join(", ")
             )?;
         }
+
         for jc in &self.join {
             write!(f, " {}", jc)?;
         }
+
         if let Some(ref where_clause) = self.where_clause {
             write!(f, " WHERE ")?;
             write!(f, "{}", where_clause)?;
@@ -217,7 +218,7 @@ fn join_constraint(i: &[u8]) -> IResult<&[u8], JoinConstraint> {
 }
 
 // Parse JOIN clause
-fn join_clause(i: &[u8]) -> IResult<&[u8], JoinClause> {
+pub fn join_clause(i: &[u8]) -> IResult<&[u8], JoinClause> {
     let (remaining_input, (_, _natural, operator, _, right, _, constraint)) = tuple((
         multispace0,
         opt(terminated(tag_no_case("natural"), multispace1)),
@@ -276,16 +277,14 @@ pub fn selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
 pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
     let (
         remaining_input,
-        (_, _, distinct, _, fields, _, tables, join, where_clause, group_by, order, limit),
+        (_, _, distinct, _, fields, (tables, join), where_clause, group_by, order, limit),
     ) = tuple((
         tag_no_case("select"),
         multispace1,
         opt(tag_no_case("distinct")),
         multispace0,
         field_definition_expr,
-        delimited(multispace0, tag_no_case("from"), multispace0),
-        table_list,
-        many0(join_clause),
+        relational_objects_clauses,
         opt(where_clause),
         opt(group_by_clause),
         opt(order_clause),
@@ -295,9 +294,9 @@ pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
         remaining_input,
         SelectStatement {
             tables,
+            join,
             distinct: distinct.is_some(),
             fields,
-            join,
             where_clause,
             group_by,
             order,
@@ -319,6 +318,7 @@ mod tests {
     use condition::ConditionTree;
     use order::OrderType;
     use table::Table;
+    use OrderType::OrderAscending;
 
     fn columns(cols: &[&str]) -> Vec<FieldDefinitionExpression> {
         cols.iter()
@@ -533,8 +533,8 @@ mod tests {
                 tables: vec![Table {
                     name: String::from("PaperTag"),
                     alias: Some(String::from("t")),
-					schema: None,
-                },],
+                    schema: None,
+                }],
                 fields: vec![FieldDefinitionExpression::All],
                 ..Default::default()
             }
@@ -554,7 +554,7 @@ mod tests {
                 tables: vec![Table {
                     name: String::from("PaperTag"),
                     alias: Some(String::from("t")),
-					schema: Some(String::from("db1")),
+                    schema: Some(String::from("db1")),
                 },],
                 fields: vec![FieldDefinitionExpression::All],
                 ..Default::default()
@@ -1067,12 +1067,12 @@ mod tests {
         let res = selection(qstring.as_bytes());
         let expected_stmt = SelectStatement {
             tables: vec![Table::from("PaperConflict")],
-            fields: columns(&["paperId"]),
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
                 right: JoinRightSide::Table(Table::from("PCMember")),
                 constraint: JoinConstraint::Using(vec![Column::from("contactId")]),
             }],
+            fields: columns(&["paperId"]),
             ..Default::default()
         };
         assert_eq!(res.unwrap().1, expected_stmt);
@@ -1095,12 +1095,12 @@ mod tests {
         let join_cond = ConditionExpression::ComparisonOp(ct);
         let expected = SelectStatement {
             tables: vec![Table::from("PCMember")],
-            fields: columns(&["PCMember.contactId"]),
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
                 right: JoinRightSide::Table(Table::from("PaperReview")),
                 constraint: JoinConstraint::On(join_cond),
             }],
+            fields: columns(&["PCMember.contactId"]),
             order: Some(OrderClause {
                 columns: vec![("contactId".into(), OrderType::OrderAscending)],
             }),
@@ -1153,11 +1153,6 @@ mod tests {
             res.unwrap().1,
             SelectStatement {
                 tables: vec![Table::from("ContactInfo")],
-                fields: columns(&[
-                    "PCMember.contactId",
-                    "ChairAssistant.contactId",
-                    "Chair.contactId"
-                ]),
                 join: vec![
                     mkjoin("PaperReview", "contactId"),
                     mkjoin("PaperConflict", "contactId"),
@@ -1165,10 +1160,27 @@ mod tests {
                     mkjoin("ChairAssistant", "contactId"),
                     mkjoin("Chair", "contactId"),
                 ],
+                fields: columns(&[
+                    "PCMember.contactId",
+                    "ChairAssistant.contactId",
+                    "Chair.contactId"
+                ]),
                 where_clause: expected_where_cond,
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn out_of_order_joins_fail() {
+        let qstring0 = "select paperId join PCMember using (contactId);";
+        let qstring1 = "select paperId join PCMember from PaperConflict using (contactId);";
+
+        let res0 = selection(qstring0.as_bytes());
+        let res1 = selection(qstring1.as_bytes());
+
+        assert!(res0.is_err());
+        assert!(res1.is_err());
     }
 
     #[test]
@@ -1297,7 +1309,6 @@ mod tests {
 
         let outer_select = SelectStatement {
             tables: vec![Table::from("orders")],
-            fields: columns(&["o_id", "ol_i_id"]),
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
                 right: JoinRightSide::NestedSelect(Box::new(inner_select), Some("ids".into())),
@@ -1307,6 +1318,7 @@ mod tests {
                     right: Box::new(Base(Field(Column::from("ids.ol_i_id")))),
                 })),
             }],
+            fields: columns(&["o_id", "ol_i_id"]),
             ..Default::default()
         };
 
@@ -1390,10 +1402,6 @@ mod tests {
 
         let expected = SelectStatement {
             tables: vec![Table::from("auth_permission")],
-            fields: vec![
-                FieldDefinitionExpression::Col(Column::from("auth_permission.content_type_id")),
-                FieldDefinitionExpression::Col(Column::from("auth_permission.codename")),
-            ],
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
                 right: JoinRightSide::Table(Table::from("django_content_type")),
@@ -1403,10 +1411,82 @@ mod tests {
                     right: Box::new(Base(Field(Column::from("django_content_type.id")))),
                 })),
             }],
+            fields: vec![
+                FieldDefinitionExpression::Col(Column::from("auth_permission.content_type_id")),
+                FieldDefinitionExpression::Col(Column::from("auth_permission.codename")),
+            ],
             where_clause: expected_where_clause,
             ..Default::default()
         };
 
         assert_eq!(res.unwrap().1, expected);
+    }
+
+    #[test]
+    fn literal_select() {
+        use arithmetic::{ArithmeticBase, ArithmeticExpression, ArithmeticOperator};
+
+        let qstr0 = "SELECT 1 + 1";
+        let qstr1 = "SELECT 1 + 1 AS adder GROUP BY adder ORDER BY adder";
+
+        let res0 = selection(qstr0.as_bytes());
+        let res1 = selection(qstr1.as_bytes());
+
+        let expected0 = SelectStatement {
+            distinct: false,
+            fields: vec![FieldDefinitionExpression::Value(
+                FieldValueExpression::Arithmetic(ArithmeticExpression::new(
+                    ArithmeticOperator::Add,
+                    ArithmeticBase::Scalar(1.into()),
+                    ArithmeticBase::Scalar(1.into()),
+                    None,
+                )),
+            )],
+            tables: vec![],
+            where_clause: None,
+            group_by: None,
+            order: None,
+            limit: None,
+            ..Default::default()
+        };
+
+        let expected1 = SelectStatement {
+            distinct: false,
+            fields: vec![FieldDefinitionExpression::Value(
+                FieldValueExpression::Arithmetic(ArithmeticExpression::new(
+                    ArithmeticOperator::Add,
+                    ArithmeticBase::Scalar(1.into()),
+                    ArithmeticBase::Scalar(1.into()),
+                    Some("adder".to_string()),
+                )),
+            )],
+            tables: vec![],
+            where_clause: None,
+            group_by: Some(GroupByClause {
+                columns: vec![Column {
+                    name: "adder".to_string(),
+                    alias: None,
+                    table: None,
+                    function: None,
+                }],
+                having: None,
+            }),
+            order: Some(OrderClause {
+                columns: vec![(
+                    Column {
+                        name: "adder".to_string(),
+                        alias: None,
+                        table: None,
+                        function: None,
+                    },
+                    OrderAscending,
+                )],
+            }),
+            limit: None,
+            ..Default::default()
+        };
+
+        assert_eq!(res0.unwrap().1, expected0);
+        assert_eq!(res1.unwrap().1, expected1);
     }
 }

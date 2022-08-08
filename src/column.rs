@@ -160,6 +160,21 @@ impl PartialOrd for Column {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum SortingColumnIdentifier {
+    FunctionArguments(FunctionArgument),
+    Position(usize),
+}
+
+impl fmt::Display for SortingColumnIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SortingColumnIdentifier::FunctionArguments(c) => write!(f, "{}", c),
+            SortingColumnIdentifier::Position(p) => write!(f, "{}", p),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ColumnConstraint {
     NotNull,
     CharacterSet(String),

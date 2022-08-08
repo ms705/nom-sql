@@ -9,7 +9,9 @@ use std::str::FromStr;
 
 use arithmetic::{arithmetic_expression, ArithmeticExpression};
 use case::case_when_column;
-use column::{Column, FunctionArgument, FunctionArguments, FunctionExpression};
+use column::{
+    Column, FunctionArgument, FunctionArguments, FunctionExpression, SortingColumnIdentifier,
+};
 use keywords::{escape_if_keyword, sql_keyword};
 use nom::bytes::complete::{is_not, tag, tag_no_case, take, take_until, take_while1};
 use nom::combinator::opt;
@@ -388,7 +390,7 @@ where
                 let (inp, _) = first.parse(inp)?;
                 let (inp, o2) = second.parse(inp)?;
                 third.parse(inp).map(|(i, _)| (i, o2))
-            },
+            }
         }
     }
 }
@@ -641,7 +643,8 @@ pub fn function_argument_parser(i: &[u8]) -> IResult<&[u8], FunctionArgument> {
 // present.
 pub fn function_arguments(i: &[u8]) -> IResult<&[u8], (FunctionArgument, bool)> {
     let distinct_parser = opt(tuple((tag_no_case("distinct"), multispace1)));
-    let (remaining_input, (distinct, args)) = tuple((distinct_parser, function_argument_parser))(i)?;
+    let (remaining_input, (distinct, args)) =
+        tuple((distinct_parser, function_argument_parser))(i)?;
     Ok((remaining_input, (args, distinct.is_some())))
 }
 
@@ -695,12 +698,25 @@ pub fn column_function(i: &[u8]) -> IResult<&[u8], FunctionExpression> {
                 FunctionExpression::GroupConcat(FunctionArgument::Column(col.clone()), sep)
             },
         ),
-        map(tuple((sql_identifier, multispace0, tag("("), separated_list0(tag(","), delimited(multispace0, function_argument_parser, multispace0)), tag(")"))), |tuple| {
-            let (name, _, _, arguments, _) = tuple;
-            FunctionExpression::Generic(
-                str::from_utf8(name).unwrap().to_string(), 
-                FunctionArguments::from(arguments))
-        })
+        map(
+            tuple((
+                sql_identifier,
+                multispace0,
+                tag("("),
+                separated_list0(
+                    tag(","),
+                    delimited(multispace0, function_argument_parser, multispace0),
+                ),
+                tag(")"),
+            )),
+            |tuple| {
+                let (name, _, _, arguments, _) = tuple;
+                FunctionExpression::Generic(
+                    str::from_utf8(name).unwrap().to_string(),
+                    FunctionArguments::from(arguments),
+                )
+            },
+        ),
     ))(i)
 }
 
@@ -740,26 +756,46 @@ pub fn column_identifier(i: &[u8]) -> IResult<&[u8], Column> {
         table: None,
         function: Some(Box::new(tup.0)),
     });
-    let col_w_table = map(
-        tuple((
-            opt(terminated(sql_identifier, tag("."))),
-            sql_identifier,
-            opt(as_alias),
-        )),
-        |tup| Column {
-            name: str::from_utf8(tup.1).unwrap().to_string(),
-            alias: match tup.2 {
+    let col_w_table = map(tuple((table_column_identifier, opt(as_alias))), |tup| {
+        Column {
+            name: tup.0 .1,
+            alias: match tup.1 {
                 None => None,
                 Some(a) => Some(String::from(a)),
             },
-            table: match tup.0 {
-                None => None,
-                Some(t) => Some(str::from_utf8(t).unwrap().to_string()),
-            },
+            table: tup.0 .0,
             function: None,
-        },
-    );
+        }
+    });
     alt((col_func_no_table, col_w_table))(i)
+}
+
+// Parses a SQL column name preceded in the table.column format
+pub fn table_column_identifier(i: &[u8]) -> IResult<&[u8], (Option<String>, String)> {
+    tuple((
+        map(opt(terminated(sql_identifier, tag("."))), |si| {
+            si.and_then(|si| Some(str::from_utf8(si).unwrap().to_string()))
+        }),
+        map(sql_identifier, |si| str::from_utf8(si).unwrap().to_string()),
+    ))(i)
+}
+
+pub fn sorting_column_identifier(i: &[u8]) -> IResult<&[u8], SortingColumnIdentifier> {
+    alt((
+        map(digit1, |p| {
+            SortingColumnIdentifier::Position(usize::from_str(str::from_utf8(p).unwrap()).unwrap())
+        }),
+        map(function_argument_parser, |c| {
+            SortingColumnIdentifier::FunctionArguments(c)
+        }),
+    ))(i)
+}
+
+pub fn group_by_column_identifier(i: &[u8]) -> IResult<&[u8], SortingColumnIdentifier> {
+    map(
+        tuple((sorting_column_identifier, opt(ws_sep_comma))),
+        |(c, _)| c,
+    )(i)
 }
 
 // Parses a SQL identifier (alphanumeric1 and "_").
@@ -1021,22 +1057,23 @@ pub fn value_list(i: &[u8]) -> IResult<&[u8], Vec<Literal>> {
 // Parse a reference to a named schema.table, with an optional alias
 pub fn schema_table_reference(i: &[u8]) -> IResult<&[u8], Table> {
     map(
-		tuple((
-			opt(pair(sql_identifier, tag("."))),
-			sql_identifier,
-			opt(as_alias)
-		)),
-	|tup| Table {
-        name: String::from(str::from_utf8(tup.1).unwrap()),
-        alias: match tup.2 {
-            Some(a) => Some(String::from(a)),
-            None => None,
+        tuple((
+            opt(pair(sql_identifier, tag("."))),
+            sql_identifier,
+            opt(as_alias),
+        )),
+        |tup| Table {
+            name: String::from(str::from_utf8(tup.1).unwrap()),
+            alias: match tup.2 {
+                Some(a) => Some(String::from(a)),
+                None => None,
+            },
+            schema: match tup.0 {
+                Some((schema, _)) => Some(String::from(str::from_utf8(schema).unwrap())),
+                None => None,
+            },
         },
-        schema: match tup.0 {
-            Some((schema, _)) => Some(String::from(str::from_utf8(schema).unwrap())),
-            None => None,
-        },
-    })(i)
+    )(i)
 }
 
 // Parse a reference to a named table, with an optional alias
@@ -1047,7 +1084,7 @@ pub fn table_reference(i: &[u8]) -> IResult<&[u8], Table> {
             Some(a) => Some(String::from(a)),
             None => None,
         },
-		schema: None,
+        schema: None,
     })(i)
 }
 
@@ -1137,25 +1174,31 @@ mod tests {
             name: String::from("max(addr_id)"),
             alias: None,
             table: None,
-            function: Some(Box::new(FunctionExpression::Max(
-                FunctionArgument::Column(Column::from("addr_id")),
-            ))),
+            function: Some(Box::new(FunctionExpression::Max(FunctionArgument::Column(
+                Column::from("addr_id"),
+            )))),
         };
         assert_eq!(res.unwrap().1, expected);
     }
 
     #[test]
     fn simple_generic_function() {
-        let qlist = ["coalesce(a,b,c)".as_bytes(), "coalesce (a,b,c)".as_bytes(), "coalesce(a ,b,c)".as_bytes(), "coalesce(a, b,c)".as_bytes()];
+        let qlist = [
+            "coalesce(a,b,c)".as_bytes(),
+            "coalesce (a,b,c)".as_bytes(),
+            "coalesce(a ,b,c)".as_bytes(),
+            "coalesce(a, b,c)".as_bytes(),
+        ];
         for q in qlist.iter() {
             let res = column_function(q);
-            let expected = FunctionExpression::Generic("coalesce".to_string(), 
-                FunctionArguments::from(
-                    vec!(
-                        FunctionArgument::Column(Column::from("a")),
-                        FunctionArgument::Column(Column::from("b")),
-                        FunctionArgument::Column(Column::from("c"))
-                )));
+            let expected = FunctionExpression::Generic(
+                "coalesce".to_string(),
+                FunctionArguments::from(vec![
+                    FunctionArgument::Column(Column::from("a")),
+                    FunctionArgument::Column(Column::from("b")),
+                    FunctionArgument::Column(Column::from("c")),
+                ]),
+            );
             assert_eq!(res, Ok((&b""[..], expected)));
         }
     }

@@ -2,18 +2,19 @@ use nom::character::complete::{multispace0, multispace1};
 use std::fmt;
 use std::str;
 
-use column::Column;
-use common::FieldDefinitionExpression;
+use column::SortingColumnIdentifier;
 use common::{
     as_alias, field_definition_expr, field_list, statement_terminator, table_list, table_reference,
     unsigned_number,
 };
+use common::{group_by_column_identifier, FieldDefinitionExpression};
 use condition::{condition_expr, ConditionExpression};
 use join::{join_operator, JoinConstraint, JoinOperator, JoinRightSide};
+use keywords::escape_if_keyword;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::{map, opt};
-use nom::multi::many0;
+use nom::multi::{many0, many1};
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::IResult;
 use order::{order_clause, OrderClause};
@@ -21,27 +22,40 @@ use table::Table;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct GroupByClause {
-    pub columns: Vec<Column>,
+    pub expression: GroupByExpression,
     pub having: Option<ConditionExpression>,
 }
 
 impl fmt::Display for GroupByClause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GROUP BY ")?;
-        write!(
-            f,
-            "{}",
-            self.columns
-                .iter()
-                .map(|c| format!("{}", c))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )?;
+
+        match &self.expression {
+            GroupByExpression::Columns(c) => {
+                write!(
+                    f,
+                    "{}",
+                    c.iter()
+                        .map(|c| { format!("{}", escape_if_keyword(&c.to_string())) })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            GroupByExpression::Condition(c) => {
+                write!(f, "{}", c)
+            }
+        }?;
         if let Some(ref having) = self.having {
             write!(f, " HAVING {}", having)?;
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum GroupByExpression {
+    Columns(Vec<SortingColumnIdentifier>),
+    Condition(ConditionExpression),
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -149,15 +163,17 @@ fn having_clause(i: &[u8]) -> IResult<&[u8], ConditionExpression> {
 
 // Parse GROUP BY clause
 pub fn group_by_clause(i: &[u8]) -> IResult<&[u8], GroupByClause> {
-    let (remaining_input, (_, _, _, columns, having)) = tuple((
+    let (remaining_input, (_, _, _, expression, having)) = tuple((
         multispace0,
         tag_no_case("group by"),
         multispace1,
-        field_list,
+        map(many1(group_by_column_identifier), |c| {
+            GroupByExpression::Columns(c)
+        }),
         opt(having_clause),
     ))(i)?;
 
-    Ok((remaining_input, GroupByClause { columns, having }))
+    Ok((remaining_input, GroupByClause { expression, having }))
 }
 
 fn offset(i: &[u8]) -> IResult<&[u8], u64> {
@@ -310,14 +326,16 @@ pub fn nested_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
 mod tests {
     use super::*;
     use case::{CaseWhenExpression, ColumnOrLiteral};
-    use column::{Column, FunctionArgument, FunctionArguments, FunctionExpression};
+    use column::{
+        Column, FunctionArgument, FunctionArguments, FunctionExpression, SortingColumnIdentifier,
+    };
     use common::{
         FieldDefinitionExpression, FieldValueExpression, ItemPlaceholder, Literal, Operator,
     };
     use condition::ConditionBase::*;
     use condition::ConditionExpression::*;
     use condition::ConditionTree;
-    use order::OrderType;
+    use order::{OrderType, OrderingExpression};
     use table::Table;
 
     fn columns(cols: &[&str]) -> Vec<FieldDefinitionExpression> {
@@ -533,7 +551,7 @@ mod tests {
                 tables: vec![Table {
                     name: String::from("PaperTag"),
                     alias: Some(String::from("t")),
-					schema: None,
+                    schema: None,
                 },],
                 fields: vec![FieldDefinitionExpression::All],
                 ..Default::default()
@@ -554,7 +572,7 @@ mod tests {
                 tables: vec![Table {
                     name: String::from("PaperTag"),
                     alias: Some(String::from("t")),
-					schema: Some(String::from("db1")),
+                    schema: Some(String::from("db1")),
                 },],
                 fields: vec![FieldDefinitionExpression::All],
                 ..Default::default()
@@ -782,7 +800,11 @@ mod tests {
                 function: Some(Box::new(agg_expr)),
             })],
             group_by: Some(GroupByClause {
-                columns: vec![Column::from("aid")],
+                expression: GroupByExpression::Columns(vec![
+                    SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                        "aid".into(),
+                    )),
+                ]),
                 having: None,
             }),
             ..Default::default()
@@ -806,7 +828,11 @@ mod tests {
                 function: Some(Box::new(agg_expr)),
             })],
             group_by: Some(GroupByClause {
-                columns: vec![Column::from("aid")],
+                expression: GroupByExpression::Columns(vec![
+                    SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                        "aid".into(),
+                    )),
+                ]),
                 having: None,
             }),
             ..Default::default()
@@ -842,7 +868,11 @@ mod tests {
                 function: Some(Box::new(agg_expr)),
             })],
             group_by: Some(GroupByClause {
-                columns: vec![Column::from("aid")],
+                expression: GroupByExpression::Columns(vec![
+                    SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                        "aid".into(),
+                    )),
+                ]),
                 having: None,
             }),
             ..Default::default()
@@ -878,7 +908,11 @@ mod tests {
                 function: Some(Box::new(agg_expr)),
             })],
             group_by: Some(GroupByClause {
-                columns: vec![Column::from("aid")],
+                expression: GroupByExpression::Columns(vec![
+                    SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                        "aid".into(),
+                    )),
+                ]),
                 having: None,
             }),
             ..Default::default()
@@ -915,7 +949,11 @@ mod tests {
                 function: Some(Box::new(agg_expr)),
             })],
             group_by: Some(GroupByClause {
-                columns: vec![Column::from("aid")],
+                expression: GroupByExpression::Columns(vec![
+                    SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                        "aid".into(),
+                    )),
+                ]),
                 having: None,
             }),
             ..Default::default()
@@ -962,7 +1000,11 @@ mod tests {
                 function: Some(Box::new(agg_expr)),
             })],
             group_by: Some(GroupByClause {
-                columns: vec![Column::from("votes.comment_id")],
+                expression: GroupByExpression::Columns(vec![
+                    SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                        "votes.comment_id".into(),
+                    )),
+                ]),
                 having: None,
             }),
             ..Default::default()
@@ -1049,7 +1091,17 @@ mod tests {
                 fields: vec![FieldDefinitionExpression::All],
                 where_clause: expected_where_cond,
                 order: Some(OrderClause {
-                    columns: vec![("item.i_title".into(), OrderType::OrderAscending)],
+                    expression: OrderingExpression::Columns(vec![(
+                        SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                            Column {
+                                name: "i_title".to_string(),
+                                alias: None,
+                                table: Some("item".to_string()),
+                                function: None
+                            }
+                        )),
+                        OrderType::OrderAscending
+                    )]),
                 }),
                 limit: Some(LimitClause {
                     limit: 50,
@@ -1102,7 +1154,12 @@ mod tests {
                 constraint: JoinConstraint::On(join_cond),
             }],
             order: Some(OrderClause {
-                columns: vec![("contactId".into(), OrderType::OrderAscending)],
+                expression: OrderingExpression::Columns(vec![(
+                    SortingColumnIdentifier::FunctionArguments(FunctionArgument::Column(
+                        "contactId".into(),
+                    )),
+                    OrderType::OrderAscending,
+                )]),
             }),
             ..Default::default()
         };
@@ -1408,5 +1465,58 @@ mod tests {
         };
 
         assert_eq!(res.unwrap().1, expected);
+    }
+
+    #[test]
+    fn group_by_case() {
+        let qstring = "GROUP BY CASE WHEN vote_id > 10 THEN vote_id END";
+
+        let res = group_by_clause(qstring.as_bytes());
+
+        let filter_cond = ComparisonOp(ConditionTree {
+            left: Box::new(Base(Field(Column::from("vote_id")))),
+            right: Box::new(Base(Literal(Literal::Integer(10.into())))),
+            operator: Operator::Greater,
+        });
+        let expected = GroupByClause {
+            expression: GroupByExpression::Columns(vec![
+                SortingColumnIdentifier::FunctionArguments(FunctionArgument::Conditional(
+                    CaseWhenExpression {
+                        then_expr: ColumnOrLiteral::Column(Column::from("vote_id")),
+                        else_expr: None,
+                        condition: filter_cond,
+                    },
+                )),
+            ]),
+            having: None,
+        };
+
+        assert_eq!(res.unwrap().1, expected);
+    }
+
+    #[test]
+    fn group_by_positionals() {
+        let qstring0 = "GROUP BY 1";
+        let qstring1 = "GROUP BY 1, 5, 3";
+
+        let res0 = group_by_clause(qstring0.as_bytes());
+        let res1 = group_by_clause(qstring1.as_bytes());
+
+        let expected0 = GroupByClause {
+            expression: GroupByExpression::Columns(vec![SortingColumnIdentifier::Position(1)]),
+            having: None,
+        };
+
+        let expected1 = GroupByClause {
+            expression: GroupByExpression::Columns(vec![
+                SortingColumnIdentifier::Position(1),
+                SortingColumnIdentifier::Position(5),
+                SortingColumnIdentifier::Position(3),
+            ]),
+            having: None,
+        };
+
+        assert_eq!(res0.unwrap().1, expected0);
+        assert_eq!(res1.unwrap().1, expected1);
     }
 }

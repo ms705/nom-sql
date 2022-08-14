@@ -1,7 +1,7 @@
 use std::fmt;
 use std::str;
 
-use compound_select::{compound_selection, CompoundSelectStatement};
+use compound_select::CompoundSelectStatement;
 use create::{creation, view_creation, CreateTableStatement, CreateViewStatement};
 use delete::{deletion, DeleteStatement};
 use drop::{drop_table, DropTableStatement};
@@ -9,7 +9,7 @@ use insert::{insertion, InsertStatement};
 use nom::branch::alt;
 use nom::combinator::map;
 use nom::IResult;
-use select::{selection, SelectStatement};
+use select::{selection, SelectStatement, Selection};
 use set::{set, SetStatement};
 use update::{updating, UpdateStatement};
 
@@ -42,12 +42,20 @@ impl fmt::Display for SqlQuery {
     }
 }
 
+impl From<Selection> for SqlQuery {
+    fn from(s: Selection) -> Self {
+        match s {
+            Selection::Statement(ss) => SqlQuery::Select(ss),
+            Selection::Compound(css) => SqlQuery::CompoundSelect(css),
+        }
+    }
+}
+
 pub fn sql_query(i: &[u8]) -> IResult<&[u8], SqlQuery> {
     alt((
         map(creation, |c| SqlQuery::CreateTable(c)),
         map(insertion, |i| SqlQuery::Insert(i)),
-        map(compound_selection, |cs| SqlQuery::CompoundSelect(cs)),
-        map(selection, |s| SqlQuery::Select(s)),
+        map(selection, |s| s.into()),
         map(deletion, |d| SqlQuery::Delete(d)),
         map(drop_table, |dt| SqlQuery::DropTable(dt)),
         map(updating, |u| SqlQuery::Update(u)),

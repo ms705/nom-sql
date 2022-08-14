@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use column::{Column, ColumnConstraint, ColumnSpecification};
 use common::{
-    column_identifier_no_alias, parse_comment, sql_identifier, statement_terminator,
-    schema_table_reference, type_identifier, ws_sep_comma, Literal, Real, SqlType, TableKey,
+    column_identifier_no_alias, parse_comment, schema_table_reference, sql_identifier,
+    statement_terminator, type_identifier, ws_sep_comma, Literal, Real, SqlType, TableKey,
 };
 use compound_select::{compound_selection, CompoundSelectStatement};
 use create_table_options::table_options;
@@ -18,7 +18,7 @@ use nom::multi::{many0, many1};
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::IResult;
 use order::{order_type, OrderType};
-use select::{nested_selection, SelectStatement};
+use select::{nested_simple_selection, SelectStatement};
 use table::Table;
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -431,7 +431,7 @@ pub fn view_creation(i: &[u8]) -> IResult<&[u8], CreateViewStatement> {
         multispace1,
         alt((
             map(compound_selection, |s| SelectSpecification::Compound(s)),
-            map(nested_selection, |s| SelectSpecification::Simple(s)),
+            map(nested_simple_selection, |s| SelectSpecification::Simple(s)),
         )),
         statement_terminator,
     ))(i)?;
@@ -534,7 +534,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             CreateTableStatement {
-                table: Table::from(("db1","t")),
+                table: Table::from(("db1", "t")),
                 fields: vec![ColumnSpecification::new(
                     Column::from("t.x"),
                     SqlType::Int(32)
@@ -833,7 +833,8 @@ mod tests {
                                 tables: vec![Table::from("users")],
                                 fields: vec![FieldDefinitionExpression::All],
                                 ..Default::default()
-                            },
+                            }
+                            .into(),
                         ),
                         (
                             Some(CompoundSelectOperator::DistinctUnion),
@@ -841,7 +842,8 @@ mod tests {
                                 tables: vec![Table::from("old_users")],
                                 fields: vec![FieldDefinitionExpression::All],
                                 ..Default::default()
-                            },
+                            }
+                            .into(),
                         ),
                     ],
                     order: None,

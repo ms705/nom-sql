@@ -82,7 +82,7 @@ pub fn order_clause(i: &[u8]) -> IResult<&[u8], OrderClause> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use select::selection;
+    use select::simple_selection;
 
     #[test]
     fn order_clause() {
@@ -103,9 +103,9 @@ mod tests {
             columns: vec![("name".into(), OrderType::OrderAscending)],
         };
 
-        let res1 = selection(qstring1.as_bytes());
-        let res2 = selection(qstring2.as_bytes());
-        let res3 = selection(qstring3.as_bytes());
+        let res1 = simple_selection(qstring1.as_bytes());
+        let res2 = simple_selection(qstring2.as_bytes());
+        let res3 = simple_selection(qstring3.as_bytes());
         assert_eq!(res1.unwrap().1.order, Some(expected_ord1));
         assert_eq!(res2.unwrap().1.order, Some(expected_ord2));
         assert_eq!(res3.unwrap().1.order, Some(expected_ord3));

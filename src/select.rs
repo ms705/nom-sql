@@ -4,18 +4,18 @@ use std::fmt::{Display, Formatter};
 use std::str;
 
 use column::Column;
-use common::FieldDefinitionExpression;
 use common::{
     as_alias, field_definition_expr, field_list, statement_terminator, table_list, table_reference,
     unsigned_number,
 };
+use common::{sql_identifier, FieldDefinitionExpression};
 use compound_select::nested_compound_selection;
 use condition::{condition_expr, ConditionExpression};
 use join::{join_operator, JoinConstraint, JoinOperator, JoinRightSide};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::{map, opt};
-use nom::multi::many0;
+use nom::multi::{many0, separated_list1};
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::IResult;
 use order::{order_clause, OrderClause};
@@ -106,8 +106,66 @@ impl From<CompoundSelectStatement> for Selection {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub struct WithClause {
+    pub recursive: bool,
+    pub subclauses: Vec<WithSubclause>,
+}
+
+impl fmt::Display for WithClause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "WITH ")?;
+
+        if self.recursive {
+            write!(f, "RECURSIVE ")?;
+        }
+
+        write!(
+            f,
+            "{}",
+            self.subclauses
+                .iter()
+                .map(|c| format!("{}", c))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub struct WithSubclause {
+    pub name: String,
+    pub columns: Vec<Column>,
+    pub selection: Box<Selection>,
+}
+
+impl fmt::Display for WithSubclause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} ", self.name)?;
+
+        if self.columns.len() > 0 {
+            write!(
+                f,
+                "({}) ",
+                self.columns
+                    .iter()
+                    .map(|c| format!("{}", c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+
+        write!(f, "AS ({})", self.selection)?;
+
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct SelectStatement {
+    pub with: Option<WithClause>,
     pub tables: Vec<Table>,
     pub distinct: bool,
     pub fields: Vec<FieldDefinitionExpression>,
@@ -120,6 +178,10 @@ pub struct SelectStatement {
 
 impl fmt::Display for SelectStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref with_clause) = self.with {
+            write!(f, "{}", with_clause)?;
+        }
+
         write!(f, "SELECT ")?;
         if self.distinct {
             write!(f, "DISTINCT ")?;
@@ -318,8 +380,10 @@ pub fn simple_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
 pub fn nested_simple_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
     let (
         remaining_input,
-        (_, _, distinct, _, fields, _, tables, join, where_clause, group_by, order, limit),
+        (with, _, _, _, distinct, _, fields, _, tables, join, where_clause, group_by, order, limit),
     ) = tuple((
+        opt(with_clause),
+        multispace0,
         tag_no_case("select"),
         multispace1,
         opt(tag_no_case("distinct")),
@@ -336,6 +400,7 @@ pub fn nested_simple_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
     Ok((
         remaining_input,
         SelectStatement {
+            with,
             tables,
             distinct: distinct.is_some(),
             fields,
@@ -346,6 +411,60 @@ pub fn nested_simple_selection(i: &[u8]) -> IResult<&[u8], SelectStatement> {
             limit,
         },
     ))
+}
+
+pub fn with_clause(i: &[u8]) -> IResult<&[u8], WithClause> {
+    map(
+        tuple((
+            tag_no_case("with"),
+            multispace1,
+            opt(tag_no_case("recursive")),
+            multispace0,
+            separated_list1(tuple((multispace0, tag(","), multispace0)), with_subclause),
+        )),
+        |(_, _, recursive, _, subclauses)| WithClause {
+            recursive: recursive.is_some(),
+            subclauses,
+        },
+    )(i)
+}
+
+pub fn with_subclause(i: &[u8]) -> IResult<&[u8], WithSubclause> {
+    map(
+        tuple((
+            sql_identifier,
+            multispace1,
+            opt(with_clause_column_list),
+            multispace0,
+            tag_no_case("as"),
+            multispace1,
+            tag("("),
+            multispace0,
+            nested_selection,
+            multispace0,
+            tag(")"),
+        )),
+        |(name, _, columns, _, _, _, _, _, selection, _, _)| WithSubclause {
+            name: str::from_utf8(name).unwrap().to_string(),
+            columns: columns.unwrap_or(vec![]),
+            selection: Box::new(selection),
+        },
+    )(i)
+}
+
+pub fn with_clause_column_list(i: &[u8]) -> IResult<&[u8], Vec<Column>> {
+    let (i, (_, _, columns, _, _)) = tuple((
+        tag("("),
+        multispace0,
+        separated_list1(
+            tuple((multispace0, tag(","), multispace0)),
+            map(sql_identifier, |si| str::from_utf8(si).unwrap().into()),
+        ),
+        multispace0,
+        tag(")"),
+    ))(i)?;
+
+    Ok((i, columns))
 }
 
 #[cfg(test)]
@@ -1453,5 +1572,114 @@ mod tests {
         };
 
         assert_eq!(res.unwrap().1, expected.into());
+    }
+
+    #[test]
+    fn with() {
+        let qstr0 = "WITH cte1 AS (SELECT a, b FROM table1)";
+        let qstr1 = "WITH cte1 AS (SELECT a, b FROM table1), cte2 AS (SELECT c, d FROM table2)";
+        let qstr2 =
+            "WITH cte1 (e, f) AS (SELECT a, b FROM table1), cte2 AS (SELECT c, d FROM table2)";
+        let qstr3 = "WITH RECURSIVE cte1 AS (SELECT a, b FROM table1)";
+        let res0 = with_clause(qstr0.as_bytes());
+        let res1 = with_clause(qstr1.as_bytes());
+        let res2 = with_clause(qstr2.as_bytes());
+        let res3 = with_clause(qstr3.as_bytes());
+
+        let expected_ss0 = Box::new(Selection::Statement(SelectStatement {
+            with: None,
+            tables: vec![Table {
+                name: "table1".to_string(),
+                alias: None,
+                schema: None,
+            }],
+            distinct: false,
+            fields: vec![
+                FieldDefinitionExpression::Col(Column::from("a")),
+                FieldDefinitionExpression::Col(Column::from("b")),
+            ],
+            join: vec![],
+            where_clause: None,
+            group_by: None,
+            order: None,
+            limit: None,
+        }));
+        let expected_ss1 = Box::new(Selection::Statement(SelectStatement {
+            tables: vec![Table {
+                name: "table2".to_string(),
+                alias: None,
+                schema: None,
+            }],
+            fields: vec![
+                FieldDefinitionExpression::Col(Column::from("c")),
+                FieldDefinitionExpression::Col(Column::from("d")),
+            ],
+            ..Default::default()
+        }));
+
+        let expected0 = WithClause {
+            recursive: false,
+            subclauses: vec![WithSubclause {
+                name: "cte1".to_string(),
+                columns: vec![],
+                selection: expected_ss0.clone(),
+            }],
+        };
+        let expected1 = WithClause {
+            recursive: false,
+            subclauses: vec![
+                WithSubclause {
+                    name: "cte1".to_string(),
+                    columns: vec![],
+                    selection: expected_ss0.clone(),
+                },
+                WithSubclause {
+                    name: "cte2".to_string(),
+                    columns: vec![],
+                    selection: expected_ss1.clone(),
+                },
+            ],
+        };
+        let expected2 = WithClause {
+            recursive: false,
+            subclauses: vec![
+                WithSubclause {
+                    name: "cte1".to_string(),
+                    columns: vec![
+                        Column {
+                            name: "e".to_string(),
+                            alias: None,
+                            table: None,
+                            function: None,
+                        },
+                        Column {
+                            name: "f".to_string(),
+                            alias: None,
+                            table: None,
+                            function: None,
+                        },
+                    ],
+                    selection: expected_ss0.clone(),
+                },
+                WithSubclause {
+                    name: "cte2".to_string(),
+                    columns: vec![],
+                    selection: expected_ss1.clone(),
+                },
+            ],
+        };
+        let expected3 = WithClause {
+            recursive: true,
+            subclauses: vec![WithSubclause {
+                name: "cte1".to_string(),
+                columns: vec![],
+                selection: expected_ss0.clone(),
+            }],
+        };
+
+        assert_eq!(res0.unwrap().1, expected0);
+        assert_eq!(res1.unwrap().1, expected1);
+        assert_eq!(res2.unwrap().1, expected2);
+        assert_eq!(res3.unwrap().1, expected3);
     }
 }

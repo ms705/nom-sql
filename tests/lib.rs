@@ -124,6 +124,14 @@ fn tpcw_test_tables() {
 }
 
 #[test]
+fn cte_queries() {
+    let res = test_queries_from_file(Path::new("tests/cte-queries.txt"), "CTE queries");
+    assert!(res.is_ok());
+    // There are 6 queries
+    assert_eq!(res.unwrap(), 6);
+}
+
+#[test]
 fn exists_test_queries() {
     let res = test_queries_from_file(
         Path::new("tests/exists-queries.txt"),

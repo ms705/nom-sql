@@ -1,5 +1,6 @@
 use nom::character::complete::{multispace0, multispace1};
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::str;
 
 use column::Column;
@@ -8,18 +9,19 @@ use common::{
     ws_sep_comma, FieldValueExpression, Literal,
 };
 use keywords::escape_if_keyword;
+use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
-use nom::combinator::opt;
+use nom::combinator::{map, opt};
 use nom::multi::many1;
 use nom::sequence::{delimited, preceded, tuple};
-use nom::IResult;
+use nom::{IResult};
 use table::Table;
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct InsertStatement {
     pub table: Table,
     pub fields: Option<Vec<Column>>,
-    pub data: Vec<Vec<Literal>>,
+    pub data: InsertData,
     pub ignore: bool,
     pub on_duplicate: Option<Vec<(Column, FieldValueExpression)>>,
 }
@@ -38,25 +40,51 @@ impl fmt::Display for InsertStatement {
                     .join(", ")
             )?;
         }
-        write!(
-            f,
-            " VALUES {}",
-            self.data
-                .iter()
-                .map(|datas| format!(
-                    "({})",
-                    datas
-                        .into_iter()
-                        .map(|l| l.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
+        write!(f, " VALUES {}", self.data,)
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum InsertData {
+    RowValueList(Vec<Vec<Literal>>),
+    ValueList(Vec<Vec<Literal>>),
+}
+
+impl Default for InsertData {
+    fn default() -> Self {
+        Self::ValueList(vec![vec![]])
+    }
+}
+
+impl Display for InsertData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let fmt_values = |start, vvl: &Vec<Vec<Literal>>| {
+            vvl.iter().fold(String::new(), |mut acc, vl| {
+                if acc.len() > 0 {
+                    acc.push_str(", ");
+                }
+                acc.push_str(&format!("{}(", start));
+                acc.push_str(
+                    &vl.iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                acc.push_str(")");
+                acc
+            })
+        };
+
+        match self {
+            Self::ValueList(vl) => {
+                write!(f, "{}", fmt_values("", vl))
+            }
+            Self::RowValueList(vl) => {
+                write!(f, "{}", fmt_values("ROW", vl))
+            }
+        }
+    }
+}
 fn fields(i: &[u8]) -> IResult<&[u8], Vec<Column>> {
     delimited(
         preceded(tag("("), multispace0),
@@ -65,8 +93,32 @@ fn fields(i: &[u8]) -> IResult<&[u8], Vec<Column>> {
     )(i)
 }
 
-fn data(i: &[u8]) -> IResult<&[u8], Vec<Literal>> {
-    delimited(tag("("), value_list, preceded(tag(")"), opt(ws_sep_comma)))(i)
+fn data(i: &[u8]) -> IResult<&[u8], InsertData> {
+    alt((
+        // The ROW() method can't be mixed and matched so we match one or the other sets
+        map(
+            tuple((
+                multispace1,
+                many1(delimited(
+                    tag("ROW("),
+                    value_list,
+                    preceded(tag(")"), opt(ws_sep_comma)),
+                )),
+            )),
+            |(_, vl)| InsertData::RowValueList(vl),
+        ),
+        map(
+            tuple((
+                multispace0,
+                many1(delimited(
+                    tag("("),
+                    value_list,
+                    preceded(tag(")"), opt(ws_sep_comma)),
+                )),
+            )),
+            |(_, vl)| InsertData::ValueList(vl),
+        ),
+    ))(i)
 }
 
 fn on_duplicate(i: &[u8]) -> IResult<&[u8], Vec<(Column, FieldValueExpression)>> {
@@ -82,7 +134,7 @@ fn on_duplicate(i: &[u8]) -> IResult<&[u8], Vec<(Column, FieldValueExpression)>>
 // Parse rule for a SQL insert query.
 // TODO(malte): support REPLACE, nested selection, DEFAULT VALUES
 pub fn insertion(i: &[u8]) -> IResult<&[u8], InsertStatement> {
-    let (remaining_input, (_, ignore_res, _, _, _, table, _, fields, _, _, data, on_duplicate, _)) =
+    let (remaining_input, (_, ignore_res, _, _, _, table, _, fields, _, data, on_duplicate, _)) =
         tuple((
             tag_no_case("insert"),
             opt(preceded(multispace1, tag_no_case("ignore"))),
@@ -93,8 +145,7 @@ pub fn insertion(i: &[u8]) -> IResult<&[u8], InsertStatement> {
             multispace0,
             opt(fields),
             tag_no_case("values"),
-            multispace0,
-            many1(data),
+            data,
             opt(on_duplicate),
             statement_terminator,
         ))(i)?;
@@ -123,15 +174,26 @@ mod tests {
 
     #[test]
     fn simple_insert() {
-        let qstring = "INSERT INTO users VALUES (42, \"test\");";
+        let qstring0 = "INSERT INTO users VALUES (42, \"test\");";
+        let qstring1 = "INSERT INTO users VALUES ROW(42, \"test\");";
 
-        let res = insertion(qstring.as_bytes());
+        let res0 = insertion(qstring0.as_bytes());
+        let res1 = insertion(qstring1.as_bytes());
         assert_eq!(
-            res.unwrap().1,
+            res0.unwrap().1,
             InsertStatement {
                 table: Table::from("users"),
                 fields: None,
-                data: vec![vec![42.into(), "test".into()]],
+                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res1.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: None,
+                data: InsertData::RowValueList(vec![vec![42.into(), "test".into()]]),
                 ..Default::default()
             }
         );
@@ -147,7 +209,7 @@ mod tests {
             InsertStatement {
                 table: Table::from(("db1", "users")),
                 fields: None,
-                data: vec![vec![42.into(), "test".into()]],
+                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
                 ..Default::default()
             }
         );
@@ -163,12 +225,12 @@ mod tests {
             InsertStatement {
                 table: Table::from("users"),
                 fields: None,
-                data: vec![vec![
+                data: InsertData::ValueList(vec![vec![
                     42.into(),
                     "test".into(),
                     "test".into(),
                     Literal::CurrentTimestamp,
-                ],],
+                ],]),
                 ..Default::default()
             }
         );
@@ -184,7 +246,7 @@ mod tests {
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: vec![vec![42.into(), "test".into()]],
+                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
                 ..Default::default()
             }
         );
@@ -193,37 +255,65 @@ mod tests {
     // Issue #3
     #[test]
     fn insert_without_spaces() {
-        let qstring = "INSERT INTO users(id, name) VALUES(42, \"test\");";
+        let qstring0 = "INSERT INTO users(id, name) VALUES(42, \"test\");";
+        let qstring1 = "INSERT INTO users(id, name) VALUESROW(42, \"test\");";
 
-        let res = insertion(qstring.as_bytes());
+        let res0 = insertion(qstring0.as_bytes());
+        let res1 = insertion(qstring1.as_bytes());
         assert_eq!(
-            res.unwrap().1,
+            res0.unwrap().1,
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: vec![vec![42.into(), "test".into()]],
+                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
                 ..Default::default()
             }
         );
+        assert!(res1.is_err());
     }
 
     #[test]
     fn multi_insert() {
-        let qstring = "INSERT INTO users (id, name) VALUES (42, \"test\"),(21, \"test2\");";
+        let qstring0 = "INSERT INTO users (id, name) VALUES (42, \"test\"),(21, \"test2\");";
+        let qstring1 = "INSERT INTO users (id, name) VALUES (42, \"test\"), (21, \"test2\");";
+        let qstring2 = "INSERT INTO users (id, name) VALUES ROW(42, \"test\"),ROW(21, \"test2\");";
+        let qstring3 = "INSERT INTO users (id, name) VALUES ROW(42, \"test\"), ROW(21, \"test2\");";
+        let qstring4 = "INSERT INTO users (id, name) VALUES ROW(42, \"test\"),(21, \"test2\");";
+        let qstring5 = "INSERT INTO users (id, name) VALUES (42, \"test\"),ROW(21, \"test2\");";
 
-        let res = insertion(qstring.as_bytes());
-        assert_eq!(
-            res.unwrap().1,
-            InsertStatement {
-                table: Table::from("users"),
-                fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: vec![
-                    vec![42.into(), "test".into()],
-                    vec![21.into(), "test2".into()],
-                ],
-                ..Default::default()
-            }
-        );
+        let res0 = insertion(qstring0.as_bytes());
+        let res1 = insertion(qstring1.as_bytes());
+        let res2 = insertion(qstring2.as_bytes());
+        let res3 = insertion(qstring3.as_bytes());
+        let res4 = insertion(qstring4.as_bytes());
+        let res5 = insertion(qstring5.as_bytes());
+
+        let expected0 = InsertStatement {
+            table: Table::from("users"),
+            fields: Some(vec![Column::from("id"), Column::from("name")]),
+            data: InsertData::ValueList(vec![
+                vec![42.into(), "test".into()],
+                vec![21.into(), "test2".into()],
+            ]),
+            ..Default::default()
+        };
+        let expected1 = expected0.clone();
+        let expected2 = InsertStatement {
+            table: Table::from("users"),
+            fields: Some(vec![Column::from("id"), Column::from("name")]),
+            data: InsertData::RowValueList(vec![
+                vec![42.into(), "test".into()],
+                vec![21.into(), "test2".into()],
+            ]),
+            ..Default::default()
+        };
+        let expected3 = expected2.clone();
+        assert_eq!(res0.unwrap().1, expected0,);
+        assert_eq!(res1.unwrap().1, expected1,);
+        assert_eq!(res2.unwrap().1, expected2,);
+        assert_eq!(res3.unwrap().1, expected3,);
+        assert!(res4.is_err());
+        assert!(res5.is_err());
     }
 
     #[test]
@@ -236,10 +326,10 @@ mod tests {
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: vec![vec![
+                data: InsertData::ValueList(vec![vec![
                     Literal::Placeholder(ItemPlaceholder::QuestionMark),
                     Literal::Placeholder(ItemPlaceholder::QuestionMark)
-                ]],
+                ]]),
                 ..Default::default()
             }
         );
@@ -262,10 +352,10 @@ mod tests {
             InsertStatement {
                 table: Table::from("keystores"),
                 fields: Some(vec![Column::from("key"), Column::from("value")]),
-                data: vec![vec![
+                data: InsertData::ValueList(vec![vec![
                     Literal::Placeholder(ItemPlaceholder::DollarNumber(1)),
                     Literal::Placeholder(ItemPlaceholder::ColonNumber(2))
-                ]],
+                ]]),
                 on_duplicate: Some(vec![(
                     Column::from("value"),
                     FieldValueExpression::Arithmetic(expected_ae),
@@ -277,15 +367,26 @@ mod tests {
 
     #[test]
     fn insert_with_leading_value_whitespace() {
-        let qstring = "INSERT INTO users (id, name) VALUES ( 42, \"test\");";
+        let qstring0 = "INSERT INTO users (id, name) VALUES ( 42, \"test\");";
+        let qstring1 = "INSERT INTO users (id, name) VALUES ROW( 42, \"test\");";
 
-        let res = insertion(qstring.as_bytes());
+        let res0 = insertion(qstring0.as_bytes());
+        let res1 = insertion(qstring1.as_bytes());
         assert_eq!(
-            res.unwrap().1,
+            res0.unwrap().1,
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: vec![vec![42.into(), "test".into()]],
+                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res1.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: Some(vec![Column::from("id"), Column::from("name")]),
+                data: InsertData::RowValueList(vec![vec![42.into(), "test".into()]]),
                 ..Default::default()
             }
         );

@@ -15,6 +15,7 @@ use nom::combinator::{map, opt};
 use nom::multi::many1;
 use nom::sequence::{delimited, preceded, tuple};
 use nom::{IResult};
+use select::{nested_selection, Selection};
 use table::Table;
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -48,6 +49,7 @@ impl fmt::Display for InsertStatement {
 pub enum InsertData {
     RowValueList(Vec<Vec<Literal>>),
     ValueList(Vec<Vec<Literal>>),
+    Select(Selection),
 }
 
 impl Default for InsertData {
@@ -81,6 +83,9 @@ impl Display for InsertData {
             }
             Self::RowValueList(vl) => {
                 write!(f, "{}", fmt_values("ROW", vl))
+            }
+            Self::Select(s) => {
+                write!(f, "{}", s)
             }
         }
     }
@@ -134,7 +139,7 @@ fn on_duplicate(i: &[u8]) -> IResult<&[u8], Vec<(Column, FieldValueExpression)>>
 // Parse rule for a SQL insert query.
 // TODO(malte): support REPLACE, nested selection, DEFAULT VALUES
 pub fn insertion(i: &[u8]) -> IResult<&[u8], InsertStatement> {
-    let (remaining_input, (_, ignore_res, _, _, _, table, _, fields, _, data, on_duplicate, _)) =
+    let (remaining_input, (_, ignore_res, _, _, _, table, _, fields, data, on_duplicate, _)) =
         tuple((
             tag_no_case("insert"),
             opt(preceded(multispace1, tag_no_case("ignore"))),
@@ -144,8 +149,7 @@ pub fn insertion(i: &[u8]) -> IResult<&[u8], InsertStatement> {
             schema_table_reference,
             multispace0,
             opt(fields),
-            tag_no_case("values"),
-            data,
+            insertion_values,
             opt(on_duplicate),
             statement_terminator,
         ))(i)?;
@@ -164,6 +168,13 @@ pub fn insertion(i: &[u8]) -> IResult<&[u8], InsertStatement> {
     ))
 }
 
+pub fn insertion_values(i: &[u8]) -> IResult<&[u8], InsertData> {
+    alt((
+        map(nested_selection, |ns| InsertData::Select(ns)),
+        map(tuple((tag_no_case("values"), data)), |(_, d)| d),
+    ))(i)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,6 +182,8 @@ mod tests {
     use column::Column;
     use common::ItemPlaceholder;
     use table::Table;
+    use FieldDefinitionExpression::Col;
+    use {LiteralExpression, SelectStatement};
 
     #[test]
     fn simple_insert() {
@@ -390,5 +403,64 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn insert_select() {
+        let qstring0 = "INSERT INTO users (id, name) SELECT id, name FROM dual;";
+        let qstring1 = "INSERT INTO users (id, name) SELECT id, name FROM dual ON DUPLICATE KEY UPDATE name = 'dupe';";
+
+        let res0 = insertion(qstring0.as_bytes());
+        let res1 = insertion(qstring1.as_bytes());
+
+        let expected0 = InsertStatement {
+            table: Table::from("users"),
+            fields: Some(vec![Column::from("id"), Column::from("name")]),
+            data: InsertData::Select(Selection::Statement(SelectStatement {
+                tables: vec![Table {
+                    name: "dual".to_string(),
+                    alias: None,
+                    schema: None,
+                }],
+                distinct: false,
+                fields: vec![
+                    Col(Column {
+                        name: "id".to_string(),
+                        alias: None,
+                        table: None,
+                        function: None,
+                    }),
+                    Col(Column {
+                        name: "name".to_string(),
+                        alias: None,
+                        table: None,
+                        function: None,
+                    }),
+                ],
+                join: vec![],
+                where_clause: None,
+                group_by: None,
+                order: None,
+                limit: None,
+            })),
+            ..Default::default()
+        };
+
+        let mut expected1 = expected0.clone();
+        expected1.on_duplicate = Some(vec![(
+            Column {
+                name: "name".to_string(),
+                alias: None,
+                table: None,
+                function: None,
+            },
+            FieldValueExpression::Literal(LiteralExpression {
+                value: Literal::String("dupe".to_string()),
+                alias: None,
+            }),
+        )]);
+
+        assert_eq!(res0.unwrap().1, expected0);
+        assert_eq!(res1.unwrap().1, expected1);
     }
 }

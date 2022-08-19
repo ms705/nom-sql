@@ -2,7 +2,7 @@ use nom::branch::alt;
 use nom::character::complete::{alphanumeric1, digit1, line_ending, multispace0, multispace1};
 use nom::character::is_alphanumeric;
 use nom::combinator::{map, not, peek};
-use nom::{IResult, InputLength, Parser};
+use nom::{IResult, InputLength, Parser, Err};
 use std::fmt::{self, Display};
 use std::str;
 use std::str::FromStr;
@@ -13,7 +13,7 @@ use column::{Column, FunctionArgument, FunctionArguments, FunctionExpression};
 use keywords::{escape_if_keyword, sql_keyword};
 use nom::bytes::complete::{is_not, tag, tag_no_case, take, take_until, take_while1};
 use nom::combinator::opt;
-use nom::error::{ErrorKind, ParseError};
+use nom::error::{Error, ErrorKind, ParseError};
 use nom::multi::{fold_many0, many0, many1, separated_list0};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
 use table::Table;
@@ -351,6 +351,33 @@ impl Display for FieldValueExpression {
             FieldValueExpression::Arithmetic(ref expr) => write!(f, "{}", expr),
             FieldValueExpression::Literal(ref lit) => write!(f, "{}", lit),
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum FieldAssignmentValue {
+    Col(Column),
+    Expression(FieldValueExpression),
+}
+
+impl Display for FieldAssignmentValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::Col(ref col) => write!(f, "{}", col),
+            Self::Expression(ref expr) => write!(f, "{}", expr),
+        }
+    }
+}
+
+impl From<Column> for FieldAssignmentValue {
+    fn from(c: Column) -> Self {
+        Self::Col(c)
+    }
+}
+
+impl From<FieldValueExpression> for FieldAssignmentValue {
+    fn from(fve: FieldValueExpression) -> Self {
+        Self::Expression(fve)
     }
 }
 
@@ -778,11 +805,17 @@ pub fn column_identifier(i: &[u8]) -> IResult<&[u8], Column> {
 
 // Parses a SQL identifier (alphanumeric1 and "_").
 pub fn sql_identifier(i: &[u8]) -> IResult<&[u8], &[u8]> {
-    alt((
+    let (i, si) = alt((
         preceded(not(peek(sql_keyword)), take_while1(is_sql_identifier)),
         delimited(tag("`"), take_while1(is_sql_identifier), tag("`")),
         delimited(tag("["), take_while1(is_sql_identifier), tag("]")),
-    ))(i)
+    ))(i)?;
+
+    if str::from_utf8(si).unwrap_or("0").parse::<usize>().is_ok() {
+        return Err(Err::Error(Error { input: i, code: ErrorKind::IsA }));
+    }
+
+    Ok((i, si))
 }
 
 // Parse an unsigned integer.
@@ -836,21 +869,22 @@ pub fn as_alias(i: &[u8]) -> IResult<&[u8], &str> {
     )(i)
 }
 
-fn field_value_expr(i: &[u8]) -> IResult<&[u8], FieldValueExpression> {
+fn field_value_expr(i: &[u8]) -> IResult<&[u8], FieldAssignmentValue> {
     alt((
+        map(arithmetic_expression, |ae| {
+            FieldValueExpression::Arithmetic(ae).into()
+        }),
+        map(column_identifier, |c| c.into()),
         map(literal, |l| {
             FieldValueExpression::Literal(LiteralExpression {
                 value: l.into(),
                 alias: None,
-            })
-        }),
-        map(arithmetic_expression, |ae| {
-            FieldValueExpression::Arithmetic(ae)
+            }).into()
         }),
     ))(i)
 }
 
-fn assignment_expr(i: &[u8]) -> IResult<&[u8], (Column, FieldValueExpression)> {
+fn assignment_expr(i: &[u8]) -> IResult<&[u8], (Column, FieldAssignmentValue)> {
     separated_pair(
         column_identifier_no_alias,
         delimited(multispace0, tag("="), multispace0),
@@ -872,7 +906,7 @@ where
     delimited(multispace0, tag("="), multispace0)(i)
 }
 
-pub fn assignment_expr_list(i: &[u8]) -> IResult<&[u8], Vec<(Column, FieldValueExpression)>> {
+pub fn assignment_expr_list(i: &[u8]) -> IResult<&[u8], Vec<(Column, FieldAssignmentValue)>> {
     many1(terminated(assignment_expr, opt(ws_sep_comma)))(i)
 }
 

@@ -2,7 +2,7 @@ use nom::character::complete::{multispace0, multispace1};
 use std::{fmt, str};
 
 use column::Column;
-use common::{assignment_expr_list, statement_terminator, table_reference, FieldValueExpression};
+use common::{assignment_expr_list, statement_terminator, table_reference, FieldAssignmentValue};
 use condition::ConditionExpression;
 use keywords::escape_if_keyword;
 use nom::bytes::complete::tag_no_case;
@@ -15,7 +15,7 @@ use table::Table;
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct UpdateStatement {
     pub table: Table,
-    pub fields: Vec<(Column, FieldValueExpression)>,
+    pub fields: Vec<(Column, FieldAssignmentValue)>,
     pub where_clause: Option<ConditionExpression>,
 }
 
@@ -72,27 +72,47 @@ mod tests {
     use condition::ConditionBase::*;
     use condition::ConditionExpression::*;
     use condition::ConditionTree;
+    use FieldValueExpression;
     use table::Table;
 
     #[test]
     fn simple_update() {
-        let qstring = "UPDATE users SET id = 42, name = 'test'";
+        let qstring0 = "UPDATE users SET id = 42, name = 'test'";
+        let qstring1 = "UPDATE users SET id = new_id, name = old_name";
 
-        let res = updating(qstring.as_bytes());
+        let res0 = updating(qstring0.as_bytes());
+        let res1 = updating(qstring1.as_bytes());
         assert_eq!(
-            res.unwrap().1,
+            res0.unwrap().1,
             UpdateStatement {
                 table: Table::from("users"),
                 fields: vec![
                     (
                         Column::from("id"),
-                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42))),
+                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42))).into(),
                     ),
                     (
                         Column::from("name"),
                         FieldValueExpression::Literal(LiteralExpression::from(Literal::from(
                             "test",
-                        ))),
+                        ))).into(),
+                    ),
+                ],
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res1.unwrap().1,
+            UpdateStatement {
+                table: Table::from("users"),
+                fields: vec![
+                    (
+                        Column::from("id"),
+                        Column::from("new_id").into(),
+                    ),
+                    (
+                        Column::from("name"),
+                        Column::from("old_name").into(),
                     ),
                 ],
                 ..Default::default()
@@ -118,13 +138,13 @@ mod tests {
                 fields: vec![
                     (
                         Column::from("id"),
-                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42))),
+                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42))).into(),
                     ),
                     (
                         Column::from("name"),
                         FieldValueExpression::Literal(LiteralExpression::from(Literal::from(
                             "test",
-                        ))),
+                        ))).into(),
                     ),
                 ],
                 where_clause: expected_where_cond,
@@ -165,7 +185,7 @@ mod tests {
                             integral: -19216,
                             fractional: 5479744,
                         }
-                    ),)),
+                    ),)).into(),
                 ),],
                 where_clause: expected_where_cond,
                 ..Default::default()
@@ -197,7 +217,7 @@ mod tests {
                 table: Table::from("users"),
                 fields: vec![(
                     Column::from("karma"),
-                    FieldValueExpression::Arithmetic(expected_ae),
+                    FieldValueExpression::Arithmetic(expected_ae).into(),
                 ),],
                 where_clause: expected_where_cond,
                 ..Default::default()
@@ -222,7 +242,7 @@ mod tests {
                 table: Table::from("users"),
                 fields: vec![(
                     Column::from("karma"),
-                    FieldValueExpression::Arithmetic(expected_ae),
+                    FieldValueExpression::Arithmetic(expected_ae).into(),
                 ),],
                 ..Default::default()
             }

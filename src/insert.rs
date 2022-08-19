@@ -4,10 +4,7 @@ use std::fmt::{Display, Formatter};
 use std::str;
 
 use column::Column;
-use common::{
-    assignment_expr_list, field_list, schema_table_reference, statement_terminator, value_list,
-    ws_sep_comma, FieldValueExpression, Literal,
-};
+use common::{assignment_expr_list, field_list, schema_table_reference, statement_terminator, value_list, ws_sep_comma, Literal, FieldAssignmentValue};
 use keywords::escape_if_keyword;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
@@ -24,7 +21,7 @@ pub struct InsertStatement {
     pub fields: Option<Vec<Column>>,
     pub data: InsertData,
     pub ignore: bool,
-    pub on_duplicate: Option<Vec<(Column, FieldValueExpression)>>,
+    pub on_duplicate: Option<Vec<(Column, FieldAssignmentValue)>>,
 }
 
 impl fmt::Display for InsertStatement {
@@ -90,6 +87,7 @@ impl Display for InsertData {
         }
     }
 }
+
 fn fields(i: &[u8]) -> IResult<&[u8], Vec<Column>> {
     delimited(
         preceded(tag("("), multispace0),
@@ -126,7 +124,7 @@ fn data(i: &[u8]) -> IResult<&[u8], InsertData> {
     ))(i)
 }
 
-fn on_duplicate(i: &[u8]) -> IResult<&[u8], Vec<(Column, FieldValueExpression)>> {
+fn on_duplicate(i: &[u8]) -> IResult<&[u8], Vec<(Column, FieldAssignmentValue)>> {
     preceded(
         multispace0,
         preceded(
@@ -184,6 +182,7 @@ mod tests {
     use table::Table;
     use FieldDefinitionExpression::Col;
     use {LiteralExpression, SelectStatement};
+    use FieldValueExpression;
 
     #[test]
     fn simple_insert() {
@@ -350,18 +349,21 @@ mod tests {
 
     #[test]
     fn insert_with_on_dup_update() {
-        let qstring = "INSERT INTO keystores (`key`, `value`) VALUES ($1, :2) \
-                       ON DUPLICATE KEY UPDATE `value` = `value` + 1";
+        let qstring0 = "insert into keystores (`key`, `value`) values ($1, :2) \
+                       on duplicate key update `value` = `value` + 1";
+        let qstring1 = "insert into keystores (`key`, `value`) values ($1, :2) \
+                       on duplicate key update value = value";
 
-        let res = insertion(qstring.as_bytes());
-        let expected_ae = ArithmeticExpression::new(
+        let res0 = insertion(qstring0.as_bytes());
+        let res1 = insertion(qstring1.as_bytes());
+        let expected_ae0 = ArithmeticExpression::new(
             ArithmeticOperator::Add,
             ArithmeticBase::Column(Column::from("value")),
             ArithmeticBase::Scalar(1.into()),
             None,
         );
         assert_eq!(
-            res.unwrap().1,
+            res0.unwrap().1,
             InsertStatement {
                 table: Table::from("keystores"),
                 fields: Some(vec![Column::from("key"), Column::from("value")]),
@@ -371,8 +373,24 @@ mod tests {
                 ]]),
                 on_duplicate: Some(vec![(
                     Column::from("value"),
-                    FieldValueExpression::Arithmetic(expected_ae),
+                    FieldValueExpression::Arithmetic(expected_ae0).into(),
                 ),]),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res1.unwrap().1,
+            InsertStatement {
+                table: Table::from("keystores"),
+                fields: Some(vec![Column::from("key"), Column::from("value")]),
+                data: InsertData::ValueList(vec![vec![
+                    Literal::Placeholder(ItemPlaceholder::DollarNumber(1)),
+                    Literal::Placeholder(ItemPlaceholder::ColonNumber(2))
+                ]]),
+                on_duplicate: Some(vec![(
+                                            Column::from("value"),
+                                            Column::from("value").into(),
+                                        ),]),
                 ..Default::default()
             }
         );
@@ -457,7 +475,7 @@ mod tests {
             FieldValueExpression::Literal(LiteralExpression {
                 value: Literal::String("dupe".to_string()),
                 alias: None,
-            }),
+            }).into(),
         )]);
 
         assert_eq!(res0.unwrap().1, expected0);

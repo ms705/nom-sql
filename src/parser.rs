@@ -84,7 +84,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insert::InsertData;
+    use insert::{InsertData, InsertDataValue};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -99,7 +99,10 @@ mod tests {
         let expected = SqlQuery::Insert(InsertStatement {
             table: Table::from("users"),
             fields: None,
-            data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+            data: InsertData::ValueList(vec![vec![
+                InsertDataValue::Literal(42.into()),
+                InsertDataValue::Literal("test".into()),
+            ]]),
             ..Default::default()
         });
         let mut h0 = DefaultHasher::new();

@@ -2,7 +2,7 @@ use nom::branch::alt;
 use nom::character::complete::{alphanumeric1, digit1, line_ending, multispace0, multispace1};
 use nom::character::is_alphanumeric;
 use nom::combinator::{map, not, peek};
-use nom::{IResult, InputLength, Parser, Err};
+use nom::{Err, IResult, InputLength, Parser};
 use std::fmt::{self, Display};
 use std::str;
 use std::str::FromStr;
@@ -10,6 +10,7 @@ use std::str::FromStr;
 use arithmetic::{arithmetic_expression, ArithmeticExpression};
 use case::case_when_column;
 use column::{Column, FunctionArgument, FunctionArguments, FunctionExpression};
+use insert::InsertDataValue;
 use keywords::{escape_if_keyword, sql_keyword};
 use nom::bytes::complete::{is_not, tag, tag_no_case, take, take_until, take_while1};
 use nom::combinator::opt;
@@ -812,7 +813,10 @@ pub fn sql_identifier(i: &[u8]) -> IResult<&[u8], &[u8]> {
     ))(i)?;
 
     if str::from_utf8(si).unwrap_or("0").parse::<usize>().is_ok() {
-        return Err(Err::Error(Error { input: i, code: ErrorKind::IsA }));
+        return Err(Err::Error(Error {
+            input: i,
+            code: ErrorKind::IsA,
+        }));
     }
 
     Ok((i, si))
@@ -879,7 +883,8 @@ fn field_value_expr(i: &[u8]) -> IResult<&[u8], FieldAssignmentValue> {
             FieldValueExpression::Literal(LiteralExpression {
                 value: l.into(),
                 alias: None,
-            }).into()
+            })
+            .into()
         }),
     ))(i)
 }
@@ -1064,6 +1069,28 @@ pub fn literal_expression(i: &[u8]) -> IResult<&[u8], LiteralExpression> {
 // Parse a list of values (e.g., for INSERT syntax).
 pub fn value_list(i: &[u8]) -> IResult<&[u8], Vec<Literal>> {
     many0(delimited(multispace0, literal, opt(ws_sep_comma)))(i)
+}
+
+pub fn insert_data_value_list(i: &[u8]) -> IResult<&[u8], Vec<InsertDataValue>> {
+    many0(delimited(multispace0, insert_data_value, opt(ws_sep_comma)))(i)
+}
+
+pub fn insert_data_value(i: &[u8]) -> IResult<&[u8], InsertDataValue> {
+    alt((
+        map(
+            tuple((
+                tag_no_case("DEFAULT"),
+                tag("("),
+                multispace0,
+                column_identifier_no_alias,
+                multispace0,
+                tag(")"),
+            )),
+            |(_, _, _, c, _, _)| InsertDataValue::ColumnDefault(c),
+        ),
+        map(tag_no_case("DEFAULT"), |_| InsertDataValue::Default),
+        map(literal, |l| InsertDataValue::Literal(l)),
+    ))(i)
 }
 
 // Parse a reference to a named schema.table, with an optional alias

@@ -72,8 +72,8 @@ mod tests {
     use condition::ConditionBase::*;
     use condition::ConditionExpression::*;
     use condition::ConditionTree;
-    use FieldValueExpression;
     use table::Table;
+    use FieldValueExpression;
 
     #[test]
     fn simple_update() {
@@ -89,13 +89,15 @@ mod tests {
                 fields: vec![
                     (
                         Column::from("id"),
-                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42))).into(),
+                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42)))
+                            .into(),
                     ),
                     (
                         Column::from("name"),
                         FieldValueExpression::Literal(LiteralExpression::from(Literal::from(
                             "test",
-                        ))).into(),
+                        )))
+                        .into(),
                     ),
                 ],
                 ..Default::default()
@@ -106,14 +108,8 @@ mod tests {
             UpdateStatement {
                 table: Table::from("users"),
                 fields: vec![
-                    (
-                        Column::from("id"),
-                        Column::from("new_id").into(),
-                    ),
-                    (
-                        Column::from("name"),
-                        Column::from("old_name").into(),
-                    ),
+                    (Column::from("id"), Column::from("new_id").into(),),
+                    (Column::from("name"), Column::from("old_name").into(),),
                 ],
                 ..Default::default()
             }
@@ -138,13 +134,15 @@ mod tests {
                 fields: vec![
                     (
                         Column::from("id"),
-                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42))).into(),
+                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42)))
+                            .into(),
                     ),
                     (
                         Column::from("name"),
                         FieldValueExpression::Literal(LiteralExpression::from(Literal::from(
                             "test",
-                        ))).into(),
+                        )))
+                        .into(),
                     ),
                 ],
                 where_clause: expected_where_cond,
@@ -185,7 +183,8 @@ mod tests {
                             integral: -19216,
                             fractional: 5479744,
                         }
-                    ),)).into(),
+                    ),))
+                    .into(),
                 ),],
                 where_clause: expected_where_cond,
                 ..Default::default()

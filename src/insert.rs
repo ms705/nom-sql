@@ -4,14 +4,17 @@ use std::fmt::{Display, Formatter};
 use std::str;
 
 use column::Column;
-use common::{assignment_expr_list, field_list, schema_table_reference, statement_terminator, value_list, ws_sep_comma, Literal, FieldAssignmentValue};
+use common::{
+    assignment_expr_list, field_list, insert_data_value_list, schema_table_reference,
+    statement_terminator, ws_sep_comma, FieldAssignmentValue, Literal,
+};
 use keywords::escape_if_keyword;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::{map, opt};
 use nom::multi::many1;
 use nom::sequence::{delimited, preceded, tuple};
-use nom::{IResult};
+use nom::IResult;
 use select::{nested_selection, Selection};
 use table::Table;
 
@@ -44,8 +47,8 @@ impl fmt::Display for InsertStatement {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum InsertData {
-    RowValueList(Vec<Vec<Literal>>),
-    ValueList(Vec<Vec<Literal>>),
+    RowValueList(Vec<Vec<InsertDataValue>>),
+    ValueList(Vec<Vec<InsertDataValue>>),
     Select(Selection),
 }
 
@@ -57,7 +60,7 @@ impl Default for InsertData {
 
 impl Display for InsertData {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let fmt_values = |start, vvl: &Vec<Vec<Literal>>| {
+        let fmt_values = |start, vvl: &Vec<Vec<InsertDataValue>>| {
             vvl.iter().fold(String::new(), |mut acc, vl| {
                 if acc.len() > 0 {
                     acc.push_str(", ");
@@ -88,6 +91,37 @@ impl Display for InsertData {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub enum InsertDataValue {
+    Literal(Literal),
+    Default,
+    ColumnDefault(Column),
+}
+
+impl Default for InsertDataValue {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+impl Display for InsertDataValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Literal(l) => {
+                write!(f, "{}", l.to_string())
+            }
+            Self::Default => write!(f, "DEFAULT"),
+            Self::ColumnDefault(c) => write!(f, "DEFAULT({})", c),
+        }
+    }
+}
+
+impl From<Literal> for InsertDataValue {
+    fn from(l: Literal) -> Self {
+        Self::Literal(l)
+    }
+}
+
 fn fields(i: &[u8]) -> IResult<&[u8], Vec<Column>> {
     delimited(
         preceded(tag("("), multispace0),
@@ -104,7 +138,7 @@ fn data(i: &[u8]) -> IResult<&[u8], InsertData> {
                 multispace1,
                 many1(delimited(
                     tag("ROW("),
-                    value_list,
+                    insert_data_value_list,
                     preceded(tag(")"), opt(ws_sep_comma)),
                 )),
             )),
@@ -115,7 +149,7 @@ fn data(i: &[u8]) -> IResult<&[u8], InsertData> {
                 multispace0,
                 many1(delimited(
                     tag("("),
-                    value_list,
+                    insert_data_value_list,
                     preceded(tag(")"), opt(ws_sep_comma)),
                 )),
             )),
@@ -181,22 +215,29 @@ mod tests {
     use common::ItemPlaceholder;
     use table::Table;
     use FieldDefinitionExpression::Col;
-    use {LiteralExpression, SelectStatement};
     use FieldValueExpression;
+    use {LiteralExpression, SelectStatement};
 
     #[test]
     fn simple_insert() {
         let qstring0 = "INSERT INTO users VALUES (42, \"test\");";
         let qstring1 = "INSERT INTO users VALUES ROW(42, \"test\");";
+        let qstring2 = "INSERT INTO users VALUES ROW(DEFAULT, \"test\");";
+        let qstring3 = "INSERT INTO users VALUES ROW(DEFAULT(id), \"test\");";
 
         let res0 = insertion(qstring0.as_bytes());
         let res1 = insertion(qstring1.as_bytes());
+        let res2 = insertion(qstring2.as_bytes());
+        let res3 = insertion(qstring3.as_bytes());
         assert_eq!(
             res0.unwrap().1,
             InsertStatement {
                 table: Table::from("users"),
                 fields: None,
-                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+                data: InsertData::ValueList(vec![vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
                 ..Default::default()
             }
         );
@@ -205,7 +246,34 @@ mod tests {
             InsertStatement {
                 table: Table::from("users"),
                 fields: None,
-                data: InsertData::RowValueList(vec![vec![42.into(), "test".into()]]),
+                data: InsertData::RowValueList(vec![vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res2.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: None,
+                data: InsertData::RowValueList(vec![vec![
+                    InsertDataValue::Default,
+                    InsertDataValue::Literal("test".into())
+                ]]),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res3.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: None,
+                data: InsertData::RowValueList(vec![vec![
+                    InsertDataValue::ColumnDefault("id".into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
                 ..Default::default()
             }
         );
@@ -221,7 +289,10 @@ mod tests {
             InsertStatement {
                 table: Table::from(("db1", "users")),
                 fields: None,
-                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+                data: InsertData::ValueList(vec![vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
                 ..Default::default()
             }
         );
@@ -238,10 +309,10 @@ mod tests {
                 table: Table::from("users"),
                 fields: None,
                 data: InsertData::ValueList(vec![vec![
-                    42.into(),
-                    "test".into(),
-                    "test".into(),
-                    Literal::CurrentTimestamp,
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into()),
+                    InsertDataValue::Literal("test".into()),
+                    InsertDataValue::Literal(Literal::CurrentTimestamp),
                 ],]),
                 ..Default::default()
             }
@@ -258,7 +329,10 @@ mod tests {
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+                data: InsertData::ValueList(vec![vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
                 ..Default::default()
             }
         );
@@ -269,19 +343,36 @@ mod tests {
     fn insert_without_spaces() {
         let qstring0 = "INSERT INTO users(id, name) VALUES(42, \"test\");";
         let qstring1 = "INSERT INTO users(id, name) VALUESROW(42, \"test\");";
+        let qstring2 = "INSERT INTO users(id, name) VALUES(DEFAULT(id), \"test\");";
 
         let res0 = insertion(qstring0.as_bytes());
         let res1 = insertion(qstring1.as_bytes());
+        let res2 = insertion(qstring2.as_bytes());
         assert_eq!(
             res0.unwrap().1,
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+                data: InsertData::ValueList(vec![vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
                 ..Default::default()
             }
         );
         assert!(res1.is_err());
+        assert_eq!(
+            res2.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: Some(vec![Column::from("id"), Column::from("name")]),
+                data: InsertData::ValueList(vec![vec![
+                    InsertDataValue::ColumnDefault("id".into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -304,8 +395,14 @@ mod tests {
             table: Table::from("users"),
             fields: Some(vec![Column::from("id"), Column::from("name")]),
             data: InsertData::ValueList(vec![
-                vec![42.into(), "test".into()],
-                vec![21.into(), "test2".into()],
+                vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into()),
+                ],
+                vec![
+                    InsertDataValue::Literal(21.into()),
+                    InsertDataValue::Literal("test2".into()),
+                ],
             ]),
             ..Default::default()
         };
@@ -314,8 +411,14 @@ mod tests {
             table: Table::from("users"),
             fields: Some(vec![Column::from("id"), Column::from("name")]),
             data: InsertData::RowValueList(vec![
-                vec![42.into(), "test".into()],
-                vec![21.into(), "test2".into()],
+                vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into()),
+                ],
+                vec![
+                    InsertDataValue::Literal(21.into()),
+                    InsertDataValue::Literal("test2".into()),
+                ],
             ]),
             ..Default::default()
         };
@@ -339,8 +442,8 @@ mod tests {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
                 data: InsertData::ValueList(vec![vec![
-                    Literal::Placeholder(ItemPlaceholder::QuestionMark),
-                    Literal::Placeholder(ItemPlaceholder::QuestionMark)
+                    InsertDataValue::Literal(Literal::Placeholder(ItemPlaceholder::QuestionMark)),
+                    InsertDataValue::Literal(Literal::Placeholder(ItemPlaceholder::QuestionMark))
                 ]]),
                 ..Default::default()
             }
@@ -368,8 +471,10 @@ mod tests {
                 table: Table::from("keystores"),
                 fields: Some(vec![Column::from("key"), Column::from("value")]),
                 data: InsertData::ValueList(vec![vec![
-                    Literal::Placeholder(ItemPlaceholder::DollarNumber(1)),
-                    Literal::Placeholder(ItemPlaceholder::ColonNumber(2))
+                    InsertDataValue::Literal(Literal::Placeholder(ItemPlaceholder::DollarNumber(
+                        1
+                    ))),
+                    InsertDataValue::Literal(Literal::Placeholder(ItemPlaceholder::ColonNumber(2)))
                 ]]),
                 on_duplicate: Some(vec![(
                     Column::from("value"),
@@ -384,13 +489,12 @@ mod tests {
                 table: Table::from("keystores"),
                 fields: Some(vec![Column::from("key"), Column::from("value")]),
                 data: InsertData::ValueList(vec![vec![
-                    Literal::Placeholder(ItemPlaceholder::DollarNumber(1)),
-                    Literal::Placeholder(ItemPlaceholder::ColonNumber(2))
+                    InsertDataValue::Literal(Literal::Placeholder(ItemPlaceholder::DollarNumber(
+                        1
+                    ))),
+                    InsertDataValue::Literal(Literal::Placeholder(ItemPlaceholder::ColonNumber(2)))
                 ]]),
-                on_duplicate: Some(vec![(
-                                            Column::from("value"),
-                                            Column::from("value").into(),
-                                        ),]),
+                on_duplicate: Some(vec![(Column::from("value"), Column::from("value").into(),),]),
                 ..Default::default()
             }
         );
@@ -400,15 +504,20 @@ mod tests {
     fn insert_with_leading_value_whitespace() {
         let qstring0 = "INSERT INTO users (id, name) VALUES ( 42, \"test\");";
         let qstring1 = "INSERT INTO users (id, name) VALUES ROW( 42, \"test\");";
+        let qstring2 = "INSERT INTO users (id, name) VALUES ROW( DEFAULT, \"test\");";
 
         let res0 = insertion(qstring0.as_bytes());
         let res1 = insertion(qstring1.as_bytes());
+        let res2 = insertion(qstring2.as_bytes());
         assert_eq!(
             res0.unwrap().1,
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: InsertData::ValueList(vec![vec![42.into(), "test".into()]]),
+                data: InsertData::ValueList(vec![vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
                 ..Default::default()
             }
         );
@@ -417,7 +526,22 @@ mod tests {
             InsertStatement {
                 table: Table::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
-                data: InsertData::RowValueList(vec![vec![42.into(), "test".into()]]),
+                data: InsertData::RowValueList(vec![vec![
+                    InsertDataValue::Literal(42.into()),
+                    InsertDataValue::Literal("test".into())
+                ]]),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            res2.unwrap().1,
+            InsertStatement {
+                table: Table::from("users"),
+                fields: Some(vec![Column::from("id"), Column::from("name")]),
+                data: InsertData::RowValueList(vec![vec![
+                    InsertDataValue::Default,
+                    InsertDataValue::Literal("test".into())
+                ]]),
                 ..Default::default()
             }
         );
@@ -475,7 +599,8 @@ mod tests {
             FieldValueExpression::Literal(LiteralExpression {
                 value: Literal::String("dupe".to_string()),
                 alias: None,
-            }).into(),
+            })
+            .into(),
         )]);
 
         assert_eq!(res0.unwrap().1, expected0);

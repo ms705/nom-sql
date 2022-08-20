@@ -4,20 +4,19 @@ use std::str;
 
 use column::Column;
 use common::{
-    assignment_expr_list, field_list, statement_terminator, schema_table_reference, value_list,
-    ws_sep_comma, FieldValueExpression, Literal,
+    assignment_expr_list, field_list, statement_terminator, table_object, value_list, ws_sep_comma,
+    FieldValueExpression, Literal,
 };
-use keywords::escape_if_keyword;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::opt;
 use nom::multi::many1;
 use nom::sequence::{delimited, preceded, tuple};
 use nom::IResult;
-use table::Table;
+use table::TableObject;
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct InsertStatement {
-    pub table: Table,
+    pub table: TableObject,
     pub fields: Option<Vec<Column>>,
     pub data: Vec<Vec<Literal>>,
     pub ignore: bool,
@@ -26,7 +25,7 @@ pub struct InsertStatement {
 
 impl fmt::Display for InsertStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "INSERT INTO {}", escape_if_keyword(&self.table.name))?;
+        write!(f, "INSERT INTO {}", self.table)?;
         if let Some(ref fields) = self.fields {
             write!(
                 f,
@@ -89,7 +88,7 @@ pub fn insertion(i: &[u8]) -> IResult<&[u8], InsertStatement> {
             multispace1,
             tag_no_case("into"),
             multispace1,
-            schema_table_reference,
+            table_object,
             multispace0,
             opt(fields),
             tag_no_case("values"),
@@ -98,7 +97,7 @@ pub fn insertion(i: &[u8]) -> IResult<&[u8], InsertStatement> {
             opt(on_duplicate),
             statement_terminator,
         ))(i)?;
-    assert!(table.alias.is_none());
+    assert!(table.table.alias.is_none());
     let ignore = ignore_res.is_some();
 
     Ok((
@@ -119,7 +118,7 @@ mod tests {
     use arithmetic::{ArithmeticBase, ArithmeticExpression, ArithmeticOperator};
     use column::Column;
     use common::ItemPlaceholder;
-    use table::Table;
+    use table::{TableObject, TablePartitionList};
 
     #[test]
     fn simple_insert() {
@@ -129,7 +128,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: None,
                 data: vec![vec![42.into(), "test".into()]],
                 ..Default::default()
@@ -145,7 +144,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from(("db1","users")),
+                table: TableObject::from(("db1", "users")),
                 fields: None,
                 data: vec![vec![42.into(), "test".into()]],
                 ..Default::default()
@@ -161,7 +160,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: None,
                 data: vec![vec![
                     42.into(),
@@ -182,7 +181,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
                 data: vec![vec![42.into(), "test".into()]],
                 ..Default::default()
@@ -199,7 +198,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
                 data: vec![vec![42.into(), "test".into()]],
                 ..Default::default()
@@ -215,7 +214,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
                 data: vec![
                     vec![42.into(), "test".into()],
@@ -234,7 +233,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
                 data: vec![vec![
                     Literal::Placeholder(ItemPlaceholder::QuestionMark),
@@ -260,7 +259,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("keystores"),
+                table: TableObject::from("keystores"),
                 fields: Some(vec![Column::from("key"), Column::from("value")]),
                 data: vec![vec![
                     Literal::Placeholder(ItemPlaceholder::DollarNumber(1)),
@@ -283,7 +282,26 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             InsertStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
+                fields: Some(vec![Column::from("id"), Column::from("name")]),
+                data: vec![vec![42.into(), "test".into()]],
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn insert_with_partitions() {
+        let qstring = "INSERT INTO users PARTITION (u) (id, name) VALUES (42, \"test\");";
+
+        let res = insertion(qstring.as_bytes());
+        assert_eq!(
+            res.unwrap().1,
+            InsertStatement {
+                table: TableObject {
+                    table: "users".into(),
+                    partitions: TablePartitionList(vec!["u".into()]),
+                },
                 fields: Some(vec![Column::from("id"), Column::from("name")]),
                 data: vec![vec![42.into(), "test".into()]],
                 ..Default::default()

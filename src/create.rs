@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use column::{Column, ColumnConstraint, ColumnSpecification};
 use common::{
-    column_identifier_no_alias, parse_comment, sql_identifier, statement_terminator,
-    schema_table_reference, type_identifier, ws_sep_comma, Literal, Real, SqlType, TableKey,
+    column_identifier_no_alias, parse_comment, schema_table_reference, sql_identifier,
+    statement_terminator, type_identifier, ws_sep_comma, Literal, Real, SqlType, TableKey,
 };
 use compound_select::{compound_selection, CompoundSelectStatement};
 use create_table_options::table_options;
@@ -534,7 +534,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             CreateTableStatement {
-                table: Table::from(("db1","t")),
+                table: Table::from(("db1", "t")),
                 fields: vec![ColumnSpecification::new(
                     Column::from("t.x"),
                     SqlType::Int(32)
@@ -795,7 +795,7 @@ mod tests {
                 name: String::from("v"),
                 fields: vec![],
                 definition: Box::new(SelectSpecification::Simple(SelectStatement {
-                    tables: vec![Table::from("users")],
+                    tables: vec![Table::from("users").into()],
                     fields: vec![FieldDefinitionExpression::All],
                     where_clause: Some(ConditionExpression::ComparisonOp(ConditionTree {
                         left: Box::new(ConditionExpression::Base(ConditionBase::Field(
@@ -830,7 +830,7 @@ mod tests {
                         (
                             None,
                             SelectStatement {
-                                tables: vec![Table::from("users")],
+                                tables: vec![Table::from("users").into()],
                                 fields: vec![FieldDefinitionExpression::All],
                                 ..Default::default()
                             },
@@ -838,7 +838,7 @@ mod tests {
                         (
                             Some(CompoundSelectOperator::DistinctUnion),
                             SelectStatement {
-                                tables: vec![Table::from("old_users")],
+                                tables: vec![Table::from("old_users").into()],
                                 fields: vec![FieldDefinitionExpression::All],
                                 ..Default::default()
                             },

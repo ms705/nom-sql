@@ -79,7 +79,7 @@ mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
-    use table::Table;
+    use table::TableObject;
 
     #[test]
     fn hash_query() {
@@ -88,7 +88,7 @@ mod tests {
         assert!(res.is_ok());
 
         let expected = SqlQuery::Insert(InsertStatement {
-            table: Table::from("users"),
+            table: TableObject::from("users"),
             fields: None,
             data: vec![vec![42.into(), "test".into()]],
             ..Default::default()

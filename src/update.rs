@@ -2,26 +2,25 @@ use nom::character::complete::{multispace0, multispace1};
 use std::{fmt, str};
 
 use column::Column;
-use common::{assignment_expr_list, statement_terminator, table_reference, FieldValueExpression};
+use common::{assignment_expr_list, statement_terminator, table_object, FieldValueExpression};
 use condition::ConditionExpression;
-use keywords::escape_if_keyword;
 use nom::bytes::complete::tag_no_case;
 use nom::combinator::opt;
 use nom::sequence::tuple;
 use nom::IResult;
 use select::where_clause;
-use table::Table;
+use table::TableObject;
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct UpdateStatement {
-    pub table: Table,
+    pub table: TableObject,
     pub fields: Vec<(Column, FieldValueExpression)>,
     pub where_clause: Option<ConditionExpression>,
 }
 
 impl fmt::Display for UpdateStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "UPDATE {} ", escape_if_keyword(&self.table.name))?;
+        write!(f, "UPDATE {} ", self.table)?;
         assert!(self.fields.len() > 0);
         write!(
             f,
@@ -44,7 +43,7 @@ pub fn updating(i: &[u8]) -> IResult<&[u8], UpdateStatement> {
     let (remaining_input, (_, _, table, _, _, _, fields, _, where_clause, _)) = tuple((
         tag_no_case("update"),
         multispace1,
-        table_reference,
+        table_object,
         multispace1,
         tag_no_case("set"),
         multispace1,
@@ -72,7 +71,7 @@ mod tests {
     use condition::ConditionBase::*;
     use condition::ConditionExpression::*;
     use condition::ConditionTree;
-    use table::Table;
+    use table::{TableObject, TablePartitionList};
 
     #[test]
     fn simple_update() {
@@ -82,7 +81,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             UpdateStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: vec![
                     (
                         Column::from("id"),
@@ -114,7 +113,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             UpdateStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: vec![
                     (
                         Column::from("id"),
@@ -157,7 +156,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             UpdateStatement {
-                table: Table::from("stories"),
+                table: TableObject::from("stories"),
                 fields: vec![(
                     Column::from("hotness"),
                     FieldValueExpression::Literal(LiteralExpression::from(Literal::FixedPoint(
@@ -194,7 +193,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             UpdateStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: vec![(
                     Column::from("karma"),
                     FieldValueExpression::Arithmetic(expected_ae),
@@ -219,11 +218,40 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             UpdateStatement {
-                table: Table::from("users"),
+                table: TableObject::from("users"),
                 fields: vec![(
                     Column::from("karma"),
                     FieldValueExpression::Arithmetic(expected_ae),
                 ),],
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn update_with_partitions() {
+        let qstring = "UPDATE users PARTITION (u) SET id = 42, name = 'test'";
+
+        let res = updating(qstring.as_bytes());
+        assert_eq!(
+            res.unwrap().1,
+            UpdateStatement {
+                table: TableObject {
+                    table: "users".into(),
+                    partitions: TablePartitionList(vec!["u".into(),]),
+                },
+                fields: vec![
+                    (
+                        Column::from("id"),
+                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(42))),
+                    ),
+                    (
+                        Column::from("name"),
+                        FieldValueExpression::Literal(LiteralExpression::from(Literal::from(
+                            "test",
+                        ))),
+                    ),
+                ],
                 ..Default::default()
             }
         );

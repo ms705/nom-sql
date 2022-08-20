@@ -8,14 +8,14 @@ use nom::bytes::complete::tag_no_case;
 use nom::combinator::map;
 use nom::IResult;
 use select::{JoinClause, SelectStatement};
-use table::Table;
+use table::TableObject;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum JoinRightSide {
     /// A single table.
-    Table(Table),
+    Table(TableObject),
     /// A comma-separated (and implicitly joined) sequence of tables.
-    Tables(Vec<Table>),
+    Tables(Vec<TableObject>),
     /// A nested selection, represented as (query, alias).
     NestedSelect(Box<SelectStatement>, Option<String>),
     /// A nested join clause.
@@ -112,6 +112,7 @@ mod tests {
     use condition::ConditionExpression::{self, *};
     use condition::ConditionTree;
     use select::{selection, JoinClause, SelectStatement};
+    use table::TablePartitionList;
 
     #[test]
     fn inner_join() {
@@ -127,13 +128,50 @@ mod tests {
         };
         let join_cond = ConditionExpression::ComparisonOp(ct);
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("tags")],
-            fields: vec![FieldDefinitionExpression::AllInTable("tags".into())],
+            tables: vec![TableObject::from("tags")],
             join: vec![JoinClause {
                 operator: JoinOperator::InnerJoin,
-                right: JoinRightSide::Table(Table::from("taggings")),
+                right: JoinRightSide::Table(TableObject::from("taggings")),
                 constraint: JoinConstraint::On(join_cond),
             }],
+            fields: vec![FieldDefinitionExpression::AllInTable("tags".into())],
+            ..Default::default()
+        };
+
+        let q = res.unwrap().1;
+        assert_eq!(q, expected_stmt);
+        assert_eq!(qstring, format!("{}", q));
+    }
+
+    #[test]
+    fn partitioned_inner_join() {
+        let qstring = "SELECT tags.* FROM tags PARTITION (t, a, g) \
+                       INNER JOIN taggings PARTITION (t, a, g) ON tags.id = taggings.tag_id";
+
+        let res = selection(qstring.as_bytes());
+
+        let expected_pl = TablePartitionList(vec!["t".into(), "a".into(), "g".into()]);
+
+        let ct = ConditionTree {
+            left: Box::new(Base(Field(Column::from("tags.id")))),
+            right: Box::new(Base(Field(Column::from("taggings.tag_id")))),
+            operator: Operator::Equal,
+        };
+        let join_cond = ConditionExpression::ComparisonOp(ct);
+        let expected_stmt = SelectStatement {
+            tables: vec![TableObject {
+                table: "tags".into(),
+                partitions: expected_pl.clone(),
+            }],
+            join: vec![JoinClause {
+                operator: JoinOperator::InnerJoin,
+                right: JoinRightSide::Table(TableObject {
+                    table: "taggings".into(),
+                    partitions: expected_pl,
+                }),
+                constraint: JoinConstraint::On(join_cond),
+            }],
+            fields: vec![FieldDefinitionExpression::AllInTable("tags".into())],
             ..Default::default()
         };
 

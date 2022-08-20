@@ -2,14 +2,14 @@ use nom::character::complete::{multispace0, multispace1};
 use std::{fmt, str};
 
 use column::Column;
-use common::{assignment_expr_list, statement_terminator, FieldValueExpression, table_object};
+use common::{assignment_expr_list, statement_terminator, table_object, FieldValueExpression};
 use condition::ConditionExpression;
 use nom::bytes::complete::tag_no_case;
 use nom::combinator::opt;
 use nom::sequence::tuple;
 use nom::IResult;
 use select::where_clause;
-use table::{TableObject};
+use table::TableObject;
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct UpdateStatement {
@@ -238,9 +238,7 @@ mod tests {
             UpdateStatement {
                 table: TableObject {
                     table: "users".into(),
-                    partitions: TablePartitionList(vec![
-                        "u".into(),
-                    ]),
+                    partitions: TablePartitionList(vec!["u".into(),]),
                 },
                 fields: vec![
                     (

@@ -5,9 +5,9 @@ use std::str;
 use column::Column;
 use common::{
     as_alias, field_definition_expr, field_list, relational_objects_clauses, statement_terminator,
-    table_reference, unsigned_number,
+    table_object_list, unsigned_number,
 };
-use common::{table_list, FieldDefinitionExpression};
+use common::{table_object, FieldDefinitionExpression};
 use condition::{condition_expr, ConditionExpression};
 use join::{join_operator, JoinConstraint, JoinOperator, JoinRightSide};
 use nom::branch::alt;
@@ -16,7 +16,7 @@ use nom::combinator::{map, opt};
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::IResult;
 use order::{order_clause, OrderClause};
-use table::Table;
+use table::TableObject;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct GroupByClause {
@@ -79,7 +79,7 @@ impl fmt::Display for LimitClause {
 pub struct SelectStatement {
     pub distinct: bool,
     pub fields: Vec<FieldDefinitionExpression>,
-    pub tables: Vec<Table>,
+    pub tables: Vec<TableObject>,
     pub join: Vec<JoinClause>,
     pub where_clause: Option<ConditionExpression>,
     pub group_by: Option<GroupByClause>,
@@ -250,8 +250,8 @@ fn join_rhs(i: &[u8]) -> IResult<&[u8], JoinRightSide> {
     let nested_join = map(delimited(tag("("), join_clause, tag(")")), |nj| {
         JoinRightSide::NestedJoin(Box::new(nj))
     });
-    let table = map(table_reference, |t| JoinRightSide::Table(t));
-    let tables = map(delimited(tag("("), table_list, tag(")")), |tables| {
+    let table = map(table_object, |t| JoinRightSide::Table(t));
+    let tables = map(delimited(tag("("), table_object_list, tag(")")), |tables| {
         JoinRightSide::Tables(tables)
     });
     alt((nested_select, nested_join, table, tables))(i)
@@ -317,7 +317,7 @@ mod tests {
     use condition::ConditionExpression::*;
     use condition::ConditionTree;
     use order::OrderType;
-    use table::Table;
+    use table::{Table, TablePartitionList};
     use OrderType::OrderAscending;
 
     fn columns(cols: &[&str]) -> Vec<FieldDefinitionExpression> {
@@ -334,7 +334,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("users")],
+                tables: vec![TableObject::from("users")],
                 fields: columns(&["id", "name"]),
                 ..Default::default()
             }
@@ -349,7 +349,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("users")],
+                tables: vec![TableObject::from("users")],
                 fields: columns(&["users.id", "users.name"]),
                 ..Default::default()
             }
@@ -368,7 +368,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("users")],
+                tables: vec![TableObject::from("users")],
                 fields: vec![
                     FieldDefinitionExpression::Value(FieldValueExpression::Literal(
                         Literal::Null.into(),
@@ -396,7 +396,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("users")],
+                tables: vec![TableObject::from("users")],
                 fields: vec![FieldDefinitionExpression::All],
                 ..Default::default()
             }
@@ -411,7 +411,34 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("users"), Table::from("votes")],
+                tables: vec![TableObject::from("users"), TableObject::from("votes")],
+                fields: vec![FieldDefinitionExpression::AllInTable(String::from("users"))],
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn select_all_in_partitioned_tables() {
+        let qstring = "SELECT users.* FROM users PARTITION (a, b), votes PARTITION (a, b);";
+
+        let expected_pl = TablePartitionList(vec!["a".into(), "b".into()]);
+
+        let res = selection(qstring.as_bytes());
+        assert_eq!(
+            res.unwrap().1,
+            SelectStatement {
+                distinct: false,
+                tables: vec![
+                    TableObject {
+                        table: "users".into(),
+                        partitions: expected_pl.clone(),
+                    },
+                    TableObject {
+                        table: "votes".into(),
+                        partitions: expected_pl,
+                    },
+                ],
                 fields: vec![FieldDefinitionExpression::AllInTable(String::from("users"))],
                 ..Default::default()
             }
@@ -426,7 +453,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("users")],
+                tables: vec![TableObject::from("users")],
                 fields: columns(&["id", "name"]),
                 ..Default::default()
             }
@@ -493,7 +520,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("ContactInfo")],
+                tables: vec![TableObject::from("ContactInfo")],
                 fields: vec![FieldDefinitionExpression::All],
                 where_clause: expected_where_cond,
                 ..Default::default()
@@ -534,7 +561,8 @@ mod tests {
                     name: String::from("PaperTag"),
                     alias: Some(String::from("t")),
                     schema: None,
-                }],
+                }
+                .into()],
                 fields: vec![FieldDefinitionExpression::All],
                 ..Default::default()
             }
@@ -555,7 +583,8 @@ mod tests {
                     name: String::from("PaperTag"),
                     alias: Some(String::from("t")),
                     schema: Some(String::from("db1")),
-                },],
+                }
+                .into(),],
                 fields: vec![FieldDefinitionExpression::All],
                 ..Default::default()
             }
@@ -573,7 +602,7 @@ mod tests {
         assert_eq!(
             res1.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("PaperTag")],
+                tables: vec![TableObject::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
                     name: String::from("name"),
                     alias: Some(String::from("TagName")),
@@ -587,7 +616,7 @@ mod tests {
         assert_eq!(
             res2.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("PaperTag")],
+                tables: vec![TableObject::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
                     name: String::from("name"),
                     alias: Some(String::from("TagName")),
@@ -608,7 +637,7 @@ mod tests {
         assert_eq!(
             res1.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("PaperTag")],
+                tables: vec![TableObject::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
                     name: String::from("name"),
                     alias: Some(String::from("TagName")),
@@ -622,7 +651,7 @@ mod tests {
         assert_eq!(
             res2.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("PaperTag")],
+                tables: vec![TableObject::from("PaperTag")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
                     name: String::from("name"),
                     alias: Some(String::from("TagName")),
@@ -650,7 +679,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("PaperTag")],
+                tables: vec![TableObject::from("PaperTag")],
                 distinct: true,
                 fields: columns(&["tag"]),
                 where_clause: expected_where_cond,
@@ -689,7 +718,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("PaperStorage")],
+                tables: vec![TableObject::from("PaperStorage")],
                 fields: columns(&["infoJson"]),
                 where_clause: expected_where_cond,
                 ..Default::default()
@@ -718,7 +747,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("users")],
+                tables: vec![TableObject::from("users")],
                 fields: vec![FieldDefinitionExpression::All],
                 where_clause: expected_where_cond,
                 limit: expected_lim,
@@ -736,7 +765,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("address")],
+                tables: vec![TableObject::from("address")],
                 fields: vec![FieldDefinitionExpression::Col(Column {
                     name: String::from("max(addr_id)"),
                     alias: None,
@@ -755,7 +784,7 @@ mod tests {
         let res = selection(qstring.as_bytes());
         let agg_expr = FunctionExpression::Max(FunctionArgument::Column(Column::from("addr_id")));
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("address")],
+            tables: vec![TableObject::from("address")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: String::from("max_addr"),
                 alias: Some(String::from("max_addr")),
@@ -774,7 +803,7 @@ mod tests {
         let res = selection(qstring.as_bytes());
         let agg_expr = FunctionExpression::CountStar;
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("votes")],
+            tables: vec![TableObject::from("votes")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: String::from("count(*)"),
                 alias: None,
@@ -798,7 +827,7 @@ mod tests {
         let agg_expr =
             FunctionExpression::Count(FunctionArgument::Column(Column::from("vote_id")), true);
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("votes")],
+            tables: vec![TableObject::from("votes")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: String::from("count(distinct vote_id)"),
                 alias: None,
@@ -834,7 +863,7 @@ mod tests {
             false,
         );
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("votes")],
+            tables: vec![TableObject::from("votes")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: format!("{}", agg_expr),
                 alias: None,
@@ -870,7 +899,7 @@ mod tests {
             false,
         );
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("votes")],
+            tables: vec![TableObject::from("votes")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: format!("{}", agg_expr),
                 alias: None,
@@ -907,7 +936,7 @@ mod tests {
             false,
         );
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("votes")],
+            tables: vec![TableObject::from("votes")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: format!("{}", agg_expr),
                 alias: None,
@@ -954,7 +983,7 @@ mod tests {
             false,
         );
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("votes")],
+            tables: vec![TableObject::from("votes")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: String::from("votes"),
                 alias: Some(String::from("votes")),
@@ -1001,7 +1030,7 @@ mod tests {
             },
         );
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("sometable")],
+            tables: vec![TableObject::from("sometable")],
             fields: vec![
                 FieldDefinitionExpression::Col(Column {
                     name: String::from("x"),
@@ -1045,7 +1074,7 @@ mod tests {
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("item"), Table::from("author")],
+                tables: vec![TableObject::from("item"), TableObject::from("author")],
                 fields: vec![FieldDefinitionExpression::All],
                 where_clause: expected_where_cond,
                 order: Some(OrderClause {
@@ -1066,10 +1095,10 @@ mod tests {
 
         let res = selection(qstring.as_bytes());
         let expected_stmt = SelectStatement {
-            tables: vec![Table::from("PaperConflict")],
+            tables: vec![TableObject::from("PaperConflict")],
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
-                right: JoinRightSide::Table(Table::from("PCMember")),
+                right: JoinRightSide::Table(TableObject::from("PCMember")),
                 constraint: JoinConstraint::Using(vec![Column::from("contactId")]),
             }],
             fields: columns(&["paperId"]),
@@ -1094,10 +1123,10 @@ mod tests {
         };
         let join_cond = ConditionExpression::ComparisonOp(ct);
         let expected = SelectStatement {
-            tables: vec![Table::from("PCMember")],
+            tables: vec![TableObject::from("PCMember")],
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
-                right: JoinRightSide::Table(Table::from("PaperReview")),
+                right: JoinRightSide::Table(TableObject::from("PaperReview")),
                 constraint: JoinConstraint::On(join_cond),
             }],
             fields: columns(&["PCMember.contactId"]),
@@ -1145,14 +1174,14 @@ mod tests {
         let mkjoin = |tbl: &str, col: &str| -> JoinClause {
             JoinClause {
                 operator: JoinOperator::LeftJoin,
-                right: JoinRightSide::Table(Table::from(tbl)),
+                right: JoinRightSide::Table(TableObject::from(tbl)),
                 constraint: JoinConstraint::Using(vec![Column::from(col)]),
             }
         };
         assert_eq!(
             res.unwrap().1,
             SelectStatement {
-                tables: vec![Table::from("ContactInfo")],
+                tables: vec![TableObject::from("ContactInfo")],
                 join: vec![
                     mkjoin("PaperReview", "contactId"),
                     mkjoin("PaperConflict", "contactId"),
@@ -1197,7 +1226,7 @@ mod tests {
         });
 
         let inner_select = SelectStatement {
-            tables: vec![Table::from("orders"), Table::from("order_line")],
+            tables: vec![TableObject::from("orders"), TableObject::from("order_line")],
             fields: columns(&["o_c_id"]),
             where_clause: Some(inner_where_clause),
             ..Default::default()
@@ -1210,7 +1239,7 @@ mod tests {
         });
 
         let outer_select = SelectStatement {
-            tables: vec![Table::from("orders"), Table::from("order_line")],
+            tables: vec![TableObject::from("orders"), TableObject::from("order_line")],
             fields: columns(&["ol_i_id"]),
             where_clause: Some(outer_where_clause),
             ..Default::default()
@@ -1230,7 +1259,7 @@ mod tests {
 
         let agg_expr = FunctionExpression::Max(FunctionArgument::Column(Column::from("o_id")));
         let recursive_select = SelectStatement {
-            tables: vec![Table::from("orders")],
+            tables: vec![TableObject::from("orders")],
             fields: vec![FieldDefinitionExpression::Col(Column {
                 name: String::from("max(o_id)"),
                 alias: None,
@@ -1259,7 +1288,7 @@ mod tests {
         });
 
         let inner_select = SelectStatement {
-            tables: vec![Table::from("orders"), Table::from("order_line")],
+            tables: vec![TableObject::from("orders"), TableObject::from("order_line")],
             fields: columns(&["o_c_id"]),
             where_clause: Some(inner_where_clause),
             ..Default::default()
@@ -1272,7 +1301,7 @@ mod tests {
         });
 
         let outer_select = SelectStatement {
-            tables: vec![Table::from("orders"), Table::from("order_line")],
+            tables: vec![TableObject::from("orders"), TableObject::from("order_line")],
             fields: columns(&["ol_i_id"]),
             where_clause: Some(outer_where_clause),
             ..Default::default()
@@ -1302,13 +1331,13 @@ mod tests {
 
         // N.B.: Don't alias the inner select to `inner`, which is, well, a SQL keyword!
         let inner_select = SelectStatement {
-            tables: vec![Table::from("order_line")],
+            tables: vec![TableObject::from("order_line")],
             fields: columns(&["ol_i_id"]),
             ..Default::default()
         };
 
         let outer_select = SelectStatement {
-            tables: vec![Table::from("orders")],
+            tables: vec![TableObject::from("orders")],
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
                 right: JoinRightSide::NestedSelect(Box::new(inner_select), Some("ids".into())),
@@ -1333,7 +1362,7 @@ mod tests {
         let res = selection(qstr.as_bytes());
 
         let expected = SelectStatement {
-            tables: vec![Table::from("orders")],
+            tables: vec![TableObject::from("orders")],
             fields: vec![FieldDefinitionExpression::Value(
                 FieldValueExpression::Arithmetic(ArithmeticExpression::new(
                     ArithmeticOperator::Subtract,
@@ -1363,7 +1392,7 @@ mod tests {
         let res = selection(qstr.as_bytes());
 
         let expected = SelectStatement {
-            tables: vec![Table::from("orders")],
+            tables: vec![TableObject::from("orders")],
             fields: vec![FieldDefinitionExpression::Value(
                 FieldValueExpression::Arithmetic(ArithmeticExpression::new(
                     ArithmeticOperator::Multiply,
@@ -1401,10 +1430,10 @@ mod tests {
         }));
 
         let expected = SelectStatement {
-            tables: vec![Table::from("auth_permission")],
+            tables: vec![TableObject::from("auth_permission")],
             join: vec![JoinClause {
                 operator: JoinOperator::Join,
-                right: JoinRightSide::Table(Table::from("django_content_type")),
+                right: JoinRightSide::Table(TableObject::from("django_content_type")),
                 constraint: JoinConstraint::On(ComparisonOp(ConditionTree {
                     operator: Operator::Equal,
                     left: Box::new(Base(Field(Column::from("auth_permission.content_type_id")))),

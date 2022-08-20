@@ -127,11 +127,12 @@ fn keyword_i_to_o(i: &[u8]) -> IResult<&[u8], &[u8]> {
     ))(i)
 }
 
-fn keyword_o_to_s(i: &[u8]) -> IResult<&[u8], &[u8]> {
+fn keyword_o_to_r(i: &[u8]) -> IResult<&[u8], &[u8]> {
     alt((
         terminated(tag_no_case("ON"), keyword_follow_char),
         terminated(tag_no_case("OR"), keyword_follow_char),
         terminated(tag_no_case("OUTER"), keyword_follow_char),
+        terminated(tag_no_case("PARTITION"), keyword_follow_char),
         terminated(tag_no_case("PLAN"), keyword_follow_char),
         terminated(tag_no_case("PRAGMA"), keyword_follow_char),
         terminated(tag_no_case("PRIMARY"), keyword_follow_char),
@@ -139,6 +140,11 @@ fn keyword_o_to_s(i: &[u8]) -> IResult<&[u8], &[u8]> {
         terminated(tag_no_case("RAISE"), keyword_follow_char),
         terminated(tag_no_case("RECURSIVE"), keyword_follow_char),
         terminated(tag_no_case("REFERENCES"), keyword_follow_char),
+    ))(i)
+}
+
+fn keyword_r_to_s(i: &[u8]) -> IResult<&[u8], &[u8]> {
+    alt((
         terminated(tag_no_case("REGEXP"), keyword_follow_char),
         terminated(tag_no_case("REINDEX"), keyword_follow_char),
         terminated(tag_no_case("RELEASE"), keyword_follow_char),
@@ -185,7 +191,8 @@ pub fn sql_keyword(i: &[u8]) -> IResult<&[u8], &[u8]> {
         keyword_c_to_e,
         keyword_e_to_i,
         keyword_i_to_o,
-        keyword_o_to_s,
+        keyword_o_to_r,
+        keyword_r_to_s,
         keyword_s_to_z,
     ))(i)
 }

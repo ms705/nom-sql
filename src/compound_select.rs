@@ -133,7 +133,7 @@ mod tests {
     use super::*;
     use column::Column;
     use common::{FieldDefinitionExpression, FieldValueExpression, Literal};
-    use table::Table;
+    use table::TableObject;
 
     #[test]
     fn union() {
@@ -143,7 +143,7 @@ mod tests {
         let res2 = compound_selection(qstr2.as_bytes());
 
         let first_select = SelectStatement {
-            tables: vec![Table::from("Vote")],
+            tables: vec![TableObject::from("Vote")],
             fields: vec![
                 FieldDefinitionExpression::Col(Column::from("id")),
                 FieldDefinitionExpression::Value(FieldValueExpression::Literal(
@@ -153,7 +153,7 @@ mod tests {
             ..Default::default()
         };
         let second_select = SelectStatement {
-            tables: vec![Table::from("Rating")],
+            tables: vec![TableObject::from("Rating")],
             fields: vec![
                 FieldDefinitionExpression::Col(Column::from("id")),
                 FieldDefinitionExpression::Col(Column::from("stars")),
@@ -216,7 +216,7 @@ mod tests {
         let res = compound_selection(qstr.as_bytes());
 
         let first_select = SelectStatement {
-            tables: vec![Table::from("Vote")],
+            tables: vec![TableObject::from("Vote")],
             fields: vec![
                 FieldDefinitionExpression::Col(Column::from("id")),
                 FieldDefinitionExpression::Value(FieldValueExpression::Literal(
@@ -226,7 +226,7 @@ mod tests {
             ..Default::default()
         };
         let second_select = SelectStatement {
-            tables: vec![Table::from("Rating")],
+            tables: vec![TableObject::from("Rating")],
             fields: vec![
                 FieldDefinitionExpression::Col(Column::from("id")),
                 FieldDefinitionExpression::Col(Column::from("stars")),
@@ -234,7 +234,7 @@ mod tests {
             ..Default::default()
         };
         let third_select = SelectStatement {
-            tables: vec![Table::from("Vote")],
+            tables: vec![TableObject::from("Vote")],
             fields: vec![
                 FieldDefinitionExpression::Value(FieldValueExpression::Literal(
                     Literal::Integer(42).into(),
@@ -265,7 +265,7 @@ mod tests {
         let res = compound_selection(qstr.as_bytes());
 
         let first_select = SelectStatement {
-            tables: vec![Table::from("Vote")],
+            tables: vec![TableObject::from("Vote")],
             fields: vec![
                 FieldDefinitionExpression::Col(Column::from("id")),
                 FieldDefinitionExpression::Value(FieldValueExpression::Literal(
@@ -275,7 +275,7 @@ mod tests {
             ..Default::default()
         };
         let second_select = SelectStatement {
-            tables: vec![Table::from("Rating")],
+            tables: vec![TableObject::from("Rating")],
             fields: vec![
                 FieldDefinitionExpression::Col(Column::from("id")),
                 FieldDefinitionExpression::Col(Column::from("stars")),

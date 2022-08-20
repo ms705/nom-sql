@@ -795,7 +795,7 @@ mod tests {
                 name: String::from("v"),
                 fields: vec![],
                 definition: Box::new(SelectSpecification::Simple(SelectStatement {
-                    tables: vec![Table::from("users")],
+                    tables: vec![Table::from("users").into()],
                     fields: vec![FieldDefinitionExpression::All],
                     where_clause: Some(ConditionExpression::ComparisonOp(ConditionTree {
                         left: Box::new(ConditionExpression::Base(ConditionBase::Field(
@@ -830,7 +830,7 @@ mod tests {
                         (
                             None,
                             SelectStatement {
-                                tables: vec![Table::from("users")],
+                                tables: vec![Table::from("users").into()],
                                 fields: vec![FieldDefinitionExpression::All],
                                 ..Default::default()
                             },
@@ -838,7 +838,7 @@ mod tests {
                         (
                             Some(CompoundSelectOperator::DistinctUnion),
                             SelectStatement {
-                                tables: vec![Table::from("old_users")],
+                                tables: vec![Table::from("old_users").into()],
                                 fields: vec![FieldDefinitionExpression::All],
                                 ..Default::default()
                             },

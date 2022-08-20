@@ -7,6 +7,7 @@ extern crate serde_derive;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
+extern crate core;
 
 pub use self::arithmetic::{ArithmeticBase, ArithmeticExpression, ArithmeticOperator};
 pub use self::case::{CaseWhenExpression, ColumnOrLiteral};

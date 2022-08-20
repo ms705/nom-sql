@@ -1,7 +1,7 @@
 use nom::branch::alt;
 use nom::character::complete::{alphanumeric1, digit1, line_ending, multispace0, multispace1};
 use nom::character::is_alphanumeric;
-use nom::combinator::{map, not, peek};
+use nom::combinator::{into, map, not, peek};
 use nom::{IResult, InputLength, Parser};
 use std::fmt::{self, Display};
 use std::str;
@@ -17,7 +17,7 @@ use nom::error::{ErrorKind, ParseError};
 use nom::multi::{fold_many0, many0, many1, separated_list0};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
 use select::join_clause;
-use table::Table;
+use table::{Table, TableObject, TablePartition, TablePartitionList};
 use JoinClause;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -909,10 +909,46 @@ pub fn table_list(i: &[u8]) -> IResult<&[u8], Vec<Table>> {
     many0(terminated(schema_table_reference, opt(ws_sep_comma)))(i)
 }
 
-pub fn from_clause(i: &[u8]) -> IResult<&[u8], Vec<Table>> {
+pub fn table_object_list(i: &[u8]) -> IResult<&[u8], Vec<TableObject>> {
+    many0(terminated(table_object, opt(ws_sep_comma)))(i)
+}
+
+pub fn table_object(i: &[u8]) -> IResult<&[u8], TableObject> {
+    map(
+        tuple((
+            schema_table_reference,
+            opt(preceded(multispace0, table_partition_list)),
+        )),
+        |(table, pl)| TableObject {
+            table,
+            partitions: pl.unwrap_or(vec![].into()),
+        },
+    )(i)
+}
+
+pub fn table_partition_list(i: &[u8]) -> IResult<&[u8], TablePartitionList> {
+    let (remaining, (_, _, p, _, _)) = tuple((
+        tag_no_case("partition ("),
+        multispace0,
+        into(many1(terminated(
+            table_partition,
+            opt(tuple((multispace0, tag(","), multispace0))),
+        ))),
+        multispace0,
+        tag(")"),
+    ))(i)?;
+
+    Ok((remaining, p))
+}
+
+pub fn table_partition(i: &[u8]) -> IResult<&[u8], TablePartition> {
+    into(sql_identifier)(i)
+}
+
+pub fn from_clause(i: &[u8]) -> IResult<&[u8], Vec<TableObject>> {
     let (i, (_, t)) = tuple((
         delimited(multispace0, tag_no_case("from"), multispace0),
-        many1(terminated(schema_table_reference, opt(ws_sep_comma))),
+        many1(terminated(table_object, opt(ws_sep_comma))),
     ))(i)?;
 
     Ok((i, t))
@@ -1043,7 +1079,7 @@ pub fn value_list(i: &[u8]) -> IResult<&[u8], Vec<Literal>> {
     many0(delimited(multispace0, literal, opt(ws_sep_comma)))(i)
 }
 
-pub fn relational_objects_clauses(i: &[u8]) -> IResult<&[u8], (Vec<Table>, Vec<JoinClause>)> {
+pub fn relational_objects_clauses(i: &[u8]) -> IResult<&[u8], (Vec<TableObject>, Vec<JoinClause>)> {
     match from_clause(i) {
         Ok((i, f)) => {
             let (i, j) = many0(join_clause)(i).unwrap_or((i, vec![]));

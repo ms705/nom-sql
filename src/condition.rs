@@ -329,6 +329,7 @@ mod tests {
     use arithmetic::{ArithmeticBase, ArithmeticOperator};
     use column::Column;
     use common::{FieldDefinitionExpression, ItemPlaceholder, Literal, Operator};
+    use table::TableObject;
 
     fn columns(cols: &[&str]) -> Vec<FieldDefinitionExpression> {
         cols.iter()
@@ -710,7 +711,6 @@ mod tests {
     fn nested_select() {
         use select::SelectStatement;
         use std::default::Default;
-        use table::Table;
         use ConditionBase::*;
 
         let cond = "bar in (select col from foo)";
@@ -718,7 +718,7 @@ mod tests {
         let res = condition_expr(cond.as_bytes());
 
         let nested_select = Box::new(SelectStatement {
-            tables: vec![Table::from("foo")],
+            tables: vec![TableObject::from("foo")],
             fields: columns(&["col"]),
             ..Default::default()
         });
@@ -736,14 +736,13 @@ mod tests {
     fn exists_in_select() {
         use select::SelectStatement;
         use std::default::Default;
-        use table::Table;
 
         let cond = "exists (  select col from foo  )";
 
         let res = condition_expr(cond.as_bytes());
 
         let nested_select = Box::new(SelectStatement {
-            tables: vec![Table::from("foo")],
+            tables: vec![TableObject::from("foo")],
             fields: columns(&["col"]),
             ..Default::default()
         });
@@ -757,14 +756,13 @@ mod tests {
     fn not_exists_in_select() {
         use select::SelectStatement;
         use std::default::Default;
-        use table::Table;
 
         let cond = "not exists (select col from foo)";
 
         let res = condition_expr(cond.as_bytes());
 
         let nested_select = Box::new(SelectStatement {
-            tables: vec![Table::from("foo")],
+            tables: vec![TableObject::from("foo")],
             fields: columns(&["col"]),
             ..Default::default()
         });
@@ -779,7 +777,6 @@ mod tests {
     fn and_with_nested_select() {
         use select::SelectStatement;
         use std::default::Default;
-        use table::Table;
         use ConditionBase::*;
 
         let cond = "paperId in (select paperId from PaperConflict) and size > 0";
@@ -787,7 +784,7 @@ mod tests {
         let res = condition_expr(cond.as_bytes());
 
         let nested_select = Box::new(SelectStatement {
-            tables: vec![Table::from("PaperConflict")],
+            tables: vec![TableObject::from("PaperConflict")],
             fields: columns(&["paperId"]),
             ..Default::default()
         });

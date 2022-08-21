@@ -1,0 +1,5 @@
+SELECT a, b FROM table1 JOIN (SELECT c, d FROM table2 WHERE c = d UNION SELECT a, b FROM table 3 WHERE a = b);
+SELECT c, d FROM table2 WHERE c = d UNION SELECT a, b FROM table3 WHERE a = b UNION SELECT c, d FROM table2 WHERE c = d UNION SELECT a, b FROM table3 WHERE a = b;
+(SELECT c, d FROM table2 WHERE c = d UNION SELECT a, b FROM table3 WHERE a = b UNION SELECT c, d FROM table2 WHERE c = d UNION SELECT a, b FROM table3 WHERE a = b) UNION ALL (SELECT c, d FROM table2 WHERE c = d UNION SELECT a, b FROM table3 WHERE a = b UNION SELECT c, d FROM table2 WHERE c = d UNION SELECT a, b FROM table3 WHERE a = b);
+SELECT a, b FROM table1 WHERE a IN (SELECT c FROM table2 WHERE c = d UNION SELECT b FROM table3 WHERE a > b);
+

@@ -131,7 +131,7 @@ fn exists_test_queries() {
     );
     assert!(res.is_ok());
     // There are 4 queries
-    assert_eq!(res.unwrap(), 4);
+    assert_eq!(res.unwrap(), 5);
 }
 
 #[test]
@@ -198,6 +198,14 @@ fn parse_comments() {
 
     // There are 2 CREATE TABLE queries in the schema
     assert_eq!(ok, 2);
+    assert_eq!(fail, 0);
+}
+
+#[test]
+fn parse_nested_compound_selects() {
+    let (ok, fail) = parse_file("tests/nested-compound-selects.txt");
+
+    assert_eq!(ok, 4);
     assert_eq!(fail, 0);
 }
 

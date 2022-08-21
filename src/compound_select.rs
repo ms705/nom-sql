@@ -7,10 +7,10 @@ use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::{map, opt};
 use nom::multi::many1;
-use nom::sequence::{delimited, preceded, tuple};
+use nom::sequence::{preceded, tuple};
 use nom::IResult;
 use order::{order_clause, OrderClause};
-use select::{limit_clause, nested_selection, LimitClause, SelectStatement};
+use select::{limit_clause, nested_simple_selection, LimitClause, Selection};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
 pub enum CompoundSelectOperator {
@@ -33,7 +33,7 @@ impl fmt::Display for CompoundSelectOperator {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
 pub struct CompoundSelectStatement {
-    pub selects: Vec<(Option<CompoundSelectOperator>, SelectStatement)>,
+    pub selects: Vec<(Option<CompoundSelectOperator>, Selection)>,
     pub order: Option<OrderClause>,
     pub limit: Option<LimitClause>,
 }
@@ -89,43 +89,78 @@ fn compound_op(i: &[u8]) -> IResult<&[u8], CompoundSelectOperator> {
     ))(i)
 }
 
-fn other_selects(i: &[u8]) -> IResult<&[u8], (Option<CompoundSelectOperator>, SelectStatement)> {
-    let (remaining_input, (_, op, _, select)) = tuple((
-        multispace0,
-        compound_op,
-        multispace1,
-        opt_delimited(
-            tag("("),
-            delimited(multispace0, nested_selection, multispace0),
-            tag(")"),
-        ),
-    ))(i)?;
+// Parse terminated compound selection
+pub fn compound_selection(i: &[u8]) -> IResult<&[u8], CompoundSelectStatement> {
+    let (remaining_input, (compound_selection, _, _)) =
+        tuple((nested_compound_selection, multispace0, statement_terminator))(i)?;
 
-    Ok((remaining_input, (Some(op), select)))
+    Ok((remaining_input, compound_selection))
 }
 
-// Parse compound selection
-pub fn compound_selection(i: &[u8]) -> IResult<&[u8], CompoundSelectStatement> {
-    let (remaining_input, (first_select, other_selects, _, order, limit, _)) = tuple((
-        opt_delimited(tag("("), nested_selection, tag(")")),
-        many1(other_selects),
-        multispace0,
-        opt(order_clause),
-        opt(limit_clause),
-        statement_terminator,
+pub fn compound_selection_part(i: &[u8]) -> IResult<&[u8], Selection> {
+    alt((
+        map(compound_selection_compound_part, |cs| cs.into()),
+        map(
+            opt_delimited(tag("("), nested_simple_selection, tag(")")),
+            |s| s.into(),
+        ),
+    ))(i)
+}
+
+pub fn compound_selection_compound_part(i: &[u8]) -> IResult<&[u8], CompoundSelectStatement> {
+    let (remaining_input, (_, lhs, op_rhs, _)) = tuple((
+        tag("("),
+        opt_delimited(tag("("), nested_simple_selection, tag(")")),
+        many1(tuple((multispace1, compound_op_selection_part))),
+        tag(")"),
     ))(i)?;
 
-    let mut selects = vec![(None, first_select)];
-    selects.extend(other_selects);
+    let mut css = CompoundSelectStatement {
+        selects: vec![],
+        order: None,
+        limit: None,
+    };
 
-    Ok((
-        remaining_input,
-        CompoundSelectStatement {
-            selects,
-            order,
-            limit,
-        },
-    ))
+    css.selects.push((None, lhs.into()));
+
+    for (_, (op, rhs)) in op_rhs {
+        css.selects.push((Some(op), rhs.into()))
+    }
+
+    Ok((remaining_input, css))
+}
+
+pub fn compound_op_selection_part(i: &[u8]) -> IResult<&[u8], (CompoundSelectOperator, Selection)> {
+    let (remaining_input, (op, _, selection)) =
+        tuple((compound_op, multispace1, compound_selection_part))(i)?;
+
+    Ok((remaining_input, (op, selection)))
+}
+
+// Parse nested compound selection
+pub fn nested_compound_selection(i: &[u8]) -> IResult<&[u8], CompoundSelectStatement> {
+    let (remaining_input, ((first, other_selects), order, limit)) = tuple((
+        tuple((
+            compound_selection_part,
+            many1(tuple((multispace1, compound_op_selection_part))),
+        )),
+        opt(order_clause),
+        opt(limit_clause),
+    ))(i)?;
+
+    let mut css = CompoundSelectStatement {
+        selects: vec![],
+        order,
+        limit,
+    };
+
+    css.selects.push((None, first.into()));
+
+    for os in other_selects {
+        css.selects.push((Some(os.1 .0), os.1 .1.into()));
+    }
+
+    Ok((remaining_input, css))
 }
 
 #[cfg(test)]
@@ -133,14 +168,16 @@ mod tests {
     use super::*;
     use column::Column;
     use common::{FieldDefinitionExpression, FieldValueExpression, Literal};
+    use select::selection;
     use table::Table;
+    use SelectStatement;
 
     #[test]
     fn union() {
         let qstr = "SELECT id, 1 FROM Vote UNION SELECT id, stars from Rating;";
         let qstr2 = "(SELECT id, 1 FROM Vote) UNION (SELECT id, stars from Rating);";
-        let res = compound_selection(qstr.as_bytes());
-        let res2 = compound_selection(qstr2.as_bytes());
+        let res = selection(qstr.as_bytes());
+        let res2 = selection(qstr2.as_bytes());
 
         let first_select = SelectStatement {
             tables: vec![Table::from("Vote")],
@@ -162,15 +199,18 @@ mod tests {
         };
         let expected = CompoundSelectStatement {
             selects: vec![
-                (None, first_select),
-                (Some(CompoundSelectOperator::DistinctUnion), second_select),
+                (None, first_select.into()),
+                (
+                    Some(CompoundSelectOperator::DistinctUnion),
+                    second_select.into(),
+                ),
             ],
             order: None,
             limit: None,
         };
 
-        assert_eq!(res.unwrap().1, expected);
-        assert_eq!(res2.unwrap().1, expected);
+        assert_eq!(res.unwrap().1, expected.clone().into());
+        assert_eq!(res2.unwrap().1, expected.into());
     }
 
     #[test]
@@ -185,29 +225,38 @@ mod tests {
         assert!(&res.is_err());
         assert_eq!(
             res.unwrap_err(),
-            nom::Err::Error(nom::error::Error::new(");".as_bytes(), nom::error::ErrorKind::Tag))
+            nom::Err::Error(nom::error::Error::new(
+                ");".as_bytes(),
+                nom::error::ErrorKind::MultiSpace
+            ))
         );
         assert!(&res2.is_err());
         assert_eq!(
             res2.unwrap_err(),
-            nom::Err::Error(nom::error::Error::new(";".as_bytes(), nom::error::ErrorKind::Tag))
+            nom::Err::Error(nom::error::Error::new(
+                ";".as_bytes(),
+                nom::error::ErrorKind::Tag
+            ))
         );
         assert!(&res3.is_err());
         assert_eq!(
             res3.unwrap_err(),
             nom::Err::Error(nom::error::Error::new(
                 ") UNION (SELECT id, stars from Rating;".as_bytes(),
-                nom::error::ErrorKind::Tag
+                nom::error::ErrorKind::MultiSpace
             ))
         );
     }
 
     #[test]
     fn multi_union() {
-        let qstr = "SELECT id, 1 FROM Vote \
-                    UNION SELECT id, stars from Rating \
-                    UNION DISTINCT SELECT 42, 5 FROM Vote;";
-        let res = compound_selection(qstr.as_bytes());
+        let q = "SELECT id, 1 FROM Vote UNION SELECT id, stars from Rating UNION DISTINCT SELECT 42, 5 FROM Vote";
+        let qstr0 = format!("{};", q);
+        let qstr1 = format!("({}) UNION ALL ({});", q, q);
+        let qstr2 = format!("{} UNION ALL {};", q, q);
+        let res0 = selection(qstr0.as_bytes());
+        let res1 = selection(qstr1.as_bytes());
+        let res2 = selection(qstr2.as_bytes());
 
         let first_select = SelectStatement {
             tables: vec![Table::from("Vote")],
@@ -240,23 +289,71 @@ mod tests {
             ..Default::default()
         };
 
-        let expected = CompoundSelectStatement {
+        let expected0 = CompoundSelectStatement {
             selects: vec![
-                (None, first_select),
-                (Some(CompoundSelectOperator::DistinctUnion), second_select),
-                (Some(CompoundSelectOperator::DistinctUnion), third_select),
+                (None, first_select.clone().into()),
+                (
+                    Some(CompoundSelectOperator::DistinctUnion),
+                    second_select.clone().into(),
+                ),
+                (
+                    Some(CompoundSelectOperator::DistinctUnion),
+                    third_select.clone().into(),
+                ),
             ],
             order: None,
             limit: None,
         };
 
-        assert_eq!(res.unwrap().1, expected);
+        let expected1 = CompoundSelectStatement {
+            selects: vec![
+                (None, expected0.clone().into()),
+                (
+                    Some(CompoundSelectOperator::Union),
+                    expected0.clone().into(),
+                ),
+            ],
+            order: None,
+            limit: None,
+        };
+
+        let expected2 = CompoundSelectStatement {
+            selects: vec![
+                (None, first_select.clone().into()),
+                (
+                    Some(CompoundSelectOperator::DistinctUnion),
+                    second_select.clone().into(),
+                ),
+                (
+                    Some(CompoundSelectOperator::DistinctUnion),
+                    third_select.clone().into(),
+                ),
+                (
+                    Some(CompoundSelectOperator::Union),
+                    first_select.clone().into(),
+                ),
+                (
+                    Some(CompoundSelectOperator::DistinctUnion),
+                    second_select.clone().into(),
+                ),
+                (
+                    Some(CompoundSelectOperator::DistinctUnion),
+                    third_select.into(),
+                ),
+            ],
+            order: None,
+            limit: None,
+        };
+
+        assert_eq!(res0.unwrap().1, expected0.into());
+        assert_eq!(res1.unwrap().1, expected1.into());
+        assert_eq!(res2.unwrap().1, expected2.into());
     }
 
     #[test]
     fn union_all() {
         let qstr = "SELECT id, 1 FROM Vote UNION ALL SELECT id, stars from Rating;";
-        let res = compound_selection(qstr.as_bytes());
+        let res = selection(qstr.as_bytes());
 
         let first_select = SelectStatement {
             tables: vec![Table::from("Vote")],
@@ -278,13 +375,13 @@ mod tests {
         };
         let expected = CompoundSelectStatement {
             selects: vec![
-                (None, first_select),
-                (Some(CompoundSelectOperator::Union), second_select),
+                (None, first_select.into()),
+                (Some(CompoundSelectOperator::Union), second_select.into()),
             ],
             order: None,
             limit: None,
         };
 
-        assert_eq!(res.unwrap().1, expected);
+        assert_eq!(res.unwrap().1, expected.into());
     }
 }

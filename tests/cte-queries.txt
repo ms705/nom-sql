@@ -1,0 +1,17 @@
+-- simple CTE
+WITH cte1 AS (SELECT a, b FROM table1) SELECT b, d FROM cte1;
+
+-- 2 CTEs
+WITH cte1 AS (SELECT a, b FROM table1), cte2 AS (SELECT c, d FROM table2) SELECT b, d FROM cte1 JOIN cte2 ON cte1.a = cte2.c;
+
+-- CTE in an exists
+SELECT 'found' FROM DUAL WHERE EXISTS (WITH cte1 AS (SELECT a, b FROM table1), cte2 AS (SELECT c, d FROM table2) SELECT b, d FROM cte1 JOIN cte2 ON cte1.a = cte2.c);
+
+-- recursive cte
+WITH RECURSIVE cte1 AS (SELECT 1 AS a, 0 AS b FROM dual UNION ALL SELECT cte1.a + 1, cte1.b - 1 FROM table1), cte2 AS (SELECT c, d FROM table2) SELECT b, d FROM cte1 JOIN cte2 ON cte1.a = cte2.c;
+
+-- recursive cte with multiple initialization parts
+WITH RECURSIVE cte1 AS (SELECT 1 AS a, 0 AS b FROM dual UNION SELECT MAX(a) as a, MAX(b) as b FROM dual UNION ALL SELECT cte1.a + 1 AS a, cte1.b - 1 AS b FROM cte1), cte2 AS (SELECT c, d FROM table2) SELECT b, d FROM cte1 JOIN cte2 ON cte1.a = cte2.c;
+
+-- recursive cte with multiple recursive parts
+WITH RECURSIVE cte1 AS (SELECT 1 AS a, 0 AS b FROM dual UNION SELECT MAX(a) as a, MAX(b) as b FROM dual UNION ALL SELECT cte1.a + 1, cte1.b - 1 FROM cte1 UNION SELECT MAX(a) as a, MAX(b) as b FROM table2 ), cte2 AS (SELECT c, d FROM table2) SELECT b, d FROM cte1 JOIN cte2 ON cte1.a = cte2.c;

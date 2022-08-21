@@ -14,7 +14,7 @@ use nom::bytes::complete::{tag, tag_no_case};
 use nom::combinator::{map, opt};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated, tuple};
 use nom::IResult;
-use select::{nested_selection, SelectStatement};
+use select::{nested_selection, nested_simple_selection, SelectStatement, Selection};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ConditionBase {
@@ -89,7 +89,7 @@ pub enum ConditionExpression {
     ComparisonOp(ConditionTree),
     LogicalOp(ConditionTree),
     NegationOp(Box<ConditionExpression>),
-    ExistsOp(Box<SelectStatement>),
+    ExistsOp(Box<Selection>),
     Base(ConditionBase),
     Arithmetic(Box<ArithmeticExpression>),
     Bracketed(Box<ConditionExpression>),
@@ -227,9 +227,10 @@ fn in_operation(i: &[u8]) -> IResult<&[u8], (Operator, ConditionExpression)> {
             opt(terminated(tag_no_case("not"), multispace1)),
             terminated(tag_no_case("in"), multispace0),
             alt((
-                map(delimited(tag("("), nested_selection, tag(")")), |s| {
-                    ConditionBase::NestedSelect(Box::new(s))
-                }),
+                map(
+                    delimited(tag("("), nested_simple_selection, tag(")")),
+                    |s| ConditionBase::NestedSelect(Box::new(s)),
+                ),
                 map(delimited(tag("("), value_list, tag(")")), |vs| {
                     ConditionBase::LiteralList(vs)
                 }),
@@ -291,10 +292,7 @@ fn predicate(i: &[u8]) -> IResult<&[u8], ConditionExpression> {
         },
     );
 
-    alt((
-        simple_expr,
-        nested_exists,
-    ))(i)
+    alt((simple_expr, nested_exists))(i)
 }
 
 fn simple_expr(i: &[u8]) -> IResult<&[u8], ConditionExpression> {
@@ -320,9 +318,10 @@ fn simple_expr(i: &[u8]) -> IResult<&[u8], ConditionExpression> {
         map(column_identifier, |f| {
             ConditionExpression::Base(ConditionBase::Field(f))
         }),
-        map(delimited(tag("("), nested_selection, tag(")")), |s| {
-            ConditionExpression::Base(ConditionBase::NestedSelect(Box::new(s)))
-        }),
+        map(
+            delimited(tag("("), nested_simple_selection, tag(")")),
+            |s| ConditionExpression::Base(ConditionBase::NestedSelect(Box::new(s))),
+        ),
     ))(i)
 }
 
@@ -745,11 +744,14 @@ mod tests {
 
         let res = condition_expr(cond.as_bytes());
 
-        let nested_select = Box::new(SelectStatement {
-            tables: vec![Table::from("foo")],
-            fields: columns(&["col"]),
-            ..Default::default()
-        });
+        let nested_select = Box::new(
+            SelectStatement {
+                tables: vec![Table::from("foo")],
+                fields: columns(&["col"]),
+                ..Default::default()
+            }
+            .into(),
+        );
 
         let expected = ConditionExpression::ExistsOp(nested_select);
 
@@ -766,11 +768,14 @@ mod tests {
 
         let res = condition_expr(cond.as_bytes());
 
-        let nested_select = Box::new(SelectStatement {
-            tables: vec![Table::from("foo")],
-            fields: columns(&["col"]),
-            ..Default::default()
-        });
+        let nested_select = Box::new(
+            SelectStatement {
+                tables: vec![Table::from("foo")],
+                fields: columns(&["col"]),
+                ..Default::default()
+            }
+            .into(),
+        );
 
         let expected =
             ConditionExpression::NegationOp(Box::new(ConditionExpression::ExistsOp(nested_select)));

@@ -7,7 +7,7 @@ use nom::branch::alt;
 use nom::bytes::complete::tag_no_case;
 use nom::combinator::map;
 use nom::IResult;
-use select::{JoinClause, SelectStatement};
+use select::{JoinClause, Selection};
 use table::Table;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -17,7 +17,7 @@ pub enum JoinRightSide {
     /// A comma-separated (and implicitly joined) sequence of tables.
     Tables(Vec<Table>),
     /// A nested selection, represented as (query, alias).
-    NestedSelect(Box<SelectStatement>, Option<String>),
+    NestedSelect(Box<Selection>, Option<String>),
     /// A nested join clause.
     NestedJoin(Box<JoinClause>),
 }
@@ -111,14 +111,14 @@ mod tests {
     use condition::ConditionBase::*;
     use condition::ConditionExpression::{self, *};
     use condition::ConditionTree;
-    use select::{selection, JoinClause, SelectStatement};
+    use select::{simple_selection, JoinClause, SelectStatement};
 
     #[test]
     fn inner_join() {
         let qstring = "SELECT tags.* FROM tags \
                        INNER JOIN taggings ON tags.id = taggings.tag_id";
 
-        let res = selection(qstring.as_bytes());
+        let res = simple_selection(qstring.as_bytes());
 
         let ct = ConditionTree {
             left: Box::new(Base(Field(Column::from("tags.id")))),
